@@ -1,0 +1,2511 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sơ đồ Gantt — CPM 5.0</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Flatpickr CSS & JS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/vn.js"></script>
+  
+  <!-- Shared API Helper & Environment Config -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper for both Local and GAS environments -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal 
+                ? (isIndexPage ? "pages/login.html" : "login.html") 
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang: Kiểm tra phiên đăng nhập
+    const userProfile = Auth.checkAuth(false);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' || 
+                      window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1';
+      
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+
+      // 1. Tự động điều chỉnh link sidebar
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top'; // Quan trọng: Thoát khỏi iframe GAS
+        }
+      });
+
+      // 2. Điền thông tin profile động vào sidebar
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+
+      // 3. Đăng ký sự kiện nút Đăng xuất
+      const btnLogout = document.getElementById('btnLogout') || document.querySelector('.btn-outline-danger');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+          e.preventDefault();
+          Auth.logout();
+        });
+      }
+    });
+  </script>
+
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+      
+      /* Biến bổ sung cho Gantt */
+      --row-height: 52px;
+      --sidebar-panel-width: 280px;
+      --col-width: 40px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-light);
+      overflow-x: hidden;
+    }
+
+    #sidebar {
+      width: var(--sidebar-width);
+      height: 100vh;
+      position: fixed;
+      left: 0;
+      top: 0;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-color);
+      transition: all 0.3s;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+    }
+
+    #sidebar .sidebar-header {
+      padding: 20px 24px;
+      background: var(--sidebar-bg);
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    #sidebar .nav-link {
+      color: var(--sidebar-color);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease-in-out;
+      font-weight: 500;
+    }
+
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      color: var(--sidebar-active-color) !important;
+      background: var(--sidebar-active-bg) !important;
+      border-left: 4px solid var(--primary-color);
+    }
+
+    #sidebar .nav-link i {
+      font-size: 1.1rem;
+    }
+
+    #content {
+      margin-left: var(--sidebar-width);
+      width: calc(100% - var(--sidebar-width));
+      min-height: 100vh;
+      transition: all 0.3s;
+      padding: 20px;
+    }
+
+    @media (max-width: 991.98px) {
+      #sidebar {
+        margin-left: calc(-1 * var(--sidebar-width));
+      }
+      #sidebar.active {
+        margin-left: 0;
+      }
+      #content {
+        margin-left: 0;
+        width: 100%;
+      }
+      #content.active {
+        margin-left: var(--sidebar-width);
+      }
+    }
+
+    .top-navbar {
+      background: white;
+      box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+      margin: -20px -20px 20px -20px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+
+    /* Gantt Main Layout */
+    .gantt-board {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -4px rgba(0,0,0,0.05);
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 75px);
+      min-height: 500px;
+    }
+    
+    html.in-iframe .gantt-board,
+    body.in-iframe .gantt-board {
+      height: calc(100vh - 75px) !important;
+    }
+
+    .gantt-ctrl-bar {
+      padding: 8px 15px;
+      border-bottom: 1px solid var(--border-color);
+      background: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .gantt-workspace {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Left side: Project tree list */
+    .gantt-tree-pane {
+      width: var(--sidebar-panel-width);
+      min-width: 150px;
+      max-width: 600px;
+      border-right: none;
+      display: flex;
+      flex-direction: column;
+      background: white;
+      z-index: 10;
+    }
+
+    /* Resizer kéo thả co giãn giữa 2 vùng */
+    .gantt-resizer {
+      width: 4px;
+      cursor: col-resize;
+      background-color: var(--border-color);
+      z-index: 99;
+      transition: background-color 0.15s, width 0.15s;
+      align-self: stretch;
+      flex-shrink: 0;
+    }
+    .gantt-resizer:hover, .gantt-resizer.resizing {
+      background-color: var(--primary-color);
+      width: 6px;
+    }
+
+    .gantt-tree-header {
+      height: var(--row-height);
+      border-bottom: 1px solid var(--border-color);
+      background: #f8fafc;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    .gantt-tree-body {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* Right side: Timeline container */
+    .gantt-timeline-pane {
+      flex: 1;
+      overflow: auto;
+      background: #fafafa;
+      position: relative;
+    }
+
+    .gantt-timeline-grid {
+      position: relative;
+      background-image: 
+        linear-gradient(to right, var(--border-color) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--border-color) 1px, transparent 1px);
+      background-size: var(--col-width) var(--row-height);
+      min-height: 100%;
+    }
+
+    .gantt-timeline-header {
+      height: var(--row-height);
+      border-bottom: 1px solid var(--border-color);
+      background: #f8fafc;
+      display: flex;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .gantt-day-col {
+      width: var(--col-width);
+      min-width: var(--col-width);
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-size: 0.75rem;
+      border-right: 1px solid var(--border-color);
+      user-select: none;
+    }
+    
+    .gantt-day-col.weekend {
+      background-color: #fee2e2;
+      color: #991b1b;
+    }
+    
+    .gantt-day-col.holiday {
+      background-color: #ffedd5;
+      color: #9a3412;
+    }
+
+    .gantt-day-col .day-num {
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .gantt-day-col .day-name {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      opacity: 0.7;
+    }
+
+    /* Rows style sync */
+    .gantt-row {
+      height: var(--row-height);
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      transition: background 0.15s;
+    }
+    .gantt-row:hover {
+      background: #f8fafc;
+    }
+
+    /* Left pane row */
+    .gantt-tree-row {
+      padding: 0 16px;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .gantt-tree-row.project-row {
+      font-weight: 600;
+      background: #f1f5f9;
+      color: var(--text-main);
+    }
+    
+    .gantt-tree-row.task-row {
+      padding-left: 36px;
+      color: #334155;
+    }
+
+    .tree-meta-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .tree-title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tree-actions {
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .gantt-tree-row:hover .tree-actions {
+      display: flex;
+    }
+
+    .tree-btn {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border-color);
+      background: white;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.8rem;
+    }
+    
+    .tree-btn:hover {
+      background: #f1f5f9;
+      color: var(--text-main);
+    }
+
+    .tree-btn.btn-duplicate {
+      background-color: #e0f2fe !important;
+      color: #0369a1 !important;
+      border-color: #bae6fd !important;
+    }
+    .tree-btn.btn-duplicate:hover {
+      background-color: #bae6fd !important;
+      color: #0284c7 !important;
+    }
+
+    .tree-btn.btn-edit {
+      background-color: #fce7f3 !important;
+      color: #be185d !important;
+      border-color: #fbcfe8 !important;
+    }
+    .tree-btn.btn-edit:hover {
+      background-color: #fbcfe8 !important;
+      color: #9d174d !important;
+    }
+
+    .tree-btn.btn-view {
+      background-color: #dcfce7 !important;
+      color: #15803d !important;
+      border-color: #bbf7d0 !important;
+    }
+    .tree-btn.btn-view:hover {
+      background-color: #bbf7d0 !important;
+      color: #166534 !important;
+    }
+
+    .tree-btn.btn-delete {
+      background-color: #fee2e2 !important;
+      color: #dc2626 !important;
+      border-color: #fca5a5 !important;
+    }
+    .tree-btn.btn-delete:hover {
+      background-color: #fca5a5 !important;
+      color: #b91c1c !important;
+    }
+
+    .expand-toggle {
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+      width: 20px;
+      display: inline-block;
+      text-align: center;
+    }
+    .expand-toggle.collapsed {
+      transform: rotate(-90deg);
+    }
+
+    /* Right pane row */
+    .gantt-timeline-row {
+      position: relative;
+      width: 100%;
+    }
+
+    /* Bar style */
+    .gantt-bar-wrapper {
+      position: absolute;
+      top: 10px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: white;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    
+    .gantt-bar-wrapper:hover {
+      transform: scaleY(1.05);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15);
+    }
+
+    .gantt-bar-wrapper.project-bar {
+      background: linear-gradient(135deg, #4f46e5, #6366f1);
+      border: 1px solid #4338ca;
+      overflow: visible;
+    }
+
+    .gantt-bar-wrapper.task-bar {
+      background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+      border: 1px solid #0284c7;
+      overflow: visible;
+    }
+
+    .gantt-bar-wrapper.task-bar.completed {
+      background: linear-gradient(135deg, #10b981, #34d399);
+      border: 1px solid #059669;
+      overflow: visible;
+    }
+
+    .bar-progress {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      background: rgba(255,255,255,0.15);
+      pointer-events: none;
+    }
+
+    .bar-label {
+      position: relative;
+      z-index: 2;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .project-bar .bar-label {
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      white-space: nowrap;
+      padding: 0 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: block;
+      width: 100%;
+    }
+
+    .task-bar-label {
+      position: absolute;
+      left: calc(100% + 8px);
+      top: 50%;
+      transform: translateY(-50%);
+      white-space: nowrap;
+      color: #334155;
+      font-weight: 500;
+      z-index: 2;
+      pointer-events: none;
+      font-size: 0.8rem;
+    }
+
+    /* Global Tooltip cho Gantt */
+    .gantt-global-tooltip {
+      pointer-events: none;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid #cbd5e1;
+      padding: 6px 12px;
+      border-radius: 8px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+      font-size: 0.75rem;
+      white-space: nowrap;
+      transition: opacity 0.15s ease-out;
+    }
+    
+    .gantt-global-tooltip .tooltip-time {
+      color: #1e3a8a; /* Xanh đậm */
+      font-weight: 700;
+    }
+    
+    .gantt-global-tooltip .tooltip-separator {
+      color: #64748b;
+    }
+    
+    .gantt-global-tooltip .tooltip-val-label {
+      color: #334155;
+    }
+    
+    .gantt-global-tooltip .tooltip-val {
+      color: #991b1b; /* Đỏ đậm */
+      font-weight: 700;
+    }
+
+    /* Custom Checkbox */
+    .custom-check {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      border: 2px solid var(--border-color);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: white;
+    }
+    .custom-check.checked {
+      background: #10b981;
+      border-color: #10b981;
+      color: white;
+    }
+    .custom-check.checked::after {
+      content: "\F26E";
+      font-family: "bootstrap-icons";
+      font-size: 0.7rem;
+      font-weight: 900;
+    }
+
+    /* Modal Styling */
+    .modal-content {
+      border-radius: 16px;
+      border: none;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+    }
+    .modal-header {
+      border-bottom: 1px solid var(--border-color);
+      padding: 20px 24px;
+    }
+    .modal-footer {
+      border-top: 1px solid var(--border-color);
+      padding: 16px 24px;
+    }
+    .form-control, .form-select {
+      border-radius: 8px;
+      padding: 10px 14px;
+      border: 1px solid var(--border-color);
+    }
+    .form-control:focus, .form-select:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+
+    /* Toast Toast Container */
+    .toast-container {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      z-index: 2000;
+    }
+    .toast-custom {
+      background: white;
+      border-left: 4px solid var(--primary-color);
+      border-radius: 8px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+      transform: translateX(120%);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .toast-custom.show {
+      transform: translateX(0);
+    }
+    .toast-custom.success { border-left-color: #10b981; }
+    .toast-custom.error { border-left-color: #ef4444; }
+
+    /* New Gantt View Styles */
+    .gantt-view-btn {
+      color: var(--text-muted);
+      border: none;
+      background: transparent;
+      transition: all 0.2s ease-in-out;
+    }
+    .gantt-view-btn:hover {
+      color: var(--primary-color);
+      background: rgba(79, 70, 229, 0.05);
+    }
+    .gantt-view-btn.active {
+      color: white !important;
+      background: var(--primary-color) !important;
+      box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2), 0 2px 4px -1px rgba(79, 70, 229, 0.1);
+    }
+    .gantt-grid-col-bg {
+      width: var(--col-width);
+      min-width: var(--col-width);
+      height: 100%;
+      border-right: 1px solid var(--border-color);
+      box-sizing: border-box;
+    }
+    .gantt-grid-col-bg.weekend {
+      background-color: rgba(239, 68, 68, 0.04);
+    }
+    .gantt-grid-col-bg.holiday {
+      background-color: rgba(245, 158, 11, 0.05);
+    }
+    .gantt-grid-col-bg.today {
+      background-color: rgba(37, 99, 235, 0.07);
+      border-left: 1px dashed rgba(37, 99, 235, 0.3);
+      border-right: 1px dashed rgba(37, 99, 235, 0.3);
+    }
+    .gantt-timeline-row {
+      background: transparent !important;
+    }
+  
+    /* Premium Indigo Buttons */
+    .btn-primary {
+      background: var(--primary-gradient) !important;
+      border: none !important;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+      transition: all 0.2s ease !important;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.35) !important;
+      transform: translateY(-1px);
+    }
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+    
+    /* Card headers & Table styling */
+    .card {
+      border: 1px solid var(--border-color) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02) !important;
+      overflow: hidden;
+    }
+    .table th {
+      background-color: #f8fafc !important;
+      color: #475569 !important;
+      font-weight: 600 !important;
+      font-size: 0.8rem !important;
+      text-uppercase: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+  
+    /* Gantt chart customize colors */
+    .gantt-bar {
+      background-color: #818cf8 !important; /* Soft Indigo */
+      border-radius: 6px !important;
+      box-shadow: 0 2px 5px rgba(99, 102, 241, 0.15) !important;
+    }
+    .gantt-bar-progress {
+      background-color: #4f46e5 !important; /* Indigo */
+      border-radius: 6px 0 0 6px !important;
+    }
+    .project-row {
+      background-color: #f8fafc !important;
+    }
+    .project-name-cell {
+      font-weight: 600 !important;
+      color: #1e293b !important;
+    }
+    
+  </style>
+</head>
+<body>
+
+        <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span>CPM 5.0</span>
+      <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link ">
+        <i class="bi bi-speedometer2"></i>
+        <span>Tổng quan</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link ">
+        <i class="bi bi-briefcase"></i>
+        <span>Dự án</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link ">
+        <i class="bi bi-list-task"></i>
+        <span>Nhiệm vụ</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link ">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>Hợp đồng</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link active">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Sơ đồ Gantt</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link ">
+        <i class="bi bi-people"></i>
+        <span>Nhân viên</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link ">
+        <i class="bi bi-building"></i>
+        <span>Nhà thầu</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link ">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Tư vấn giám sát</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link ">
+        <i class="bi bi-journal-richtext"></i>
+        <span>Báo cáo ngày</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link ">
+        <i class="bi bi-calculator"></i>
+        <span>Quyết toán DAHT</span>
+      </a>
+    </div>
+
+    <!-- Hỗ trợ kỹ thuật -->
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <!-- Zalo -->
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Zalo hỗ trợ">
+            <i class="bi bi-chat-dots-fill fs-6"></i>
+          </a>
+          <!-- Gmail -->
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Gửi Email">
+            <i class="bi bi-envelope-fill fs-6"></i>
+          </a>
+          <!-- Youtube -->
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s; background-color: #ff0000 !important;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Kênh Youtube">
+            <i class="bi bi-youtube fs-6"></i>
+          </a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+
+    <!-- Profile (Footer) -->
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">
+            A
+          </div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+    
+    <!-- Gantt Board Container -->
+    <div class="gantt-board">
+      
+      <!-- Control Bar -->
+      <div class="gantt-ctrl-bar d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <!-- Project Filter -->
+          <div style="min-width: 220px;">
+            <select class="form-select form-select-sm" id="projectFilter" onchange="filterGantt()">
+              <option value="all">--- Tất cả dự án ---</option>
+            </select>
+          </div>
+          
+          <!-- Month/Year Navigator -->
+          <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-secondary px-2" onclick="navigatePeriod(-1)">
+              <i class="bi bi-chevron-left"></i>
+            </button>
+            <div class="d-flex gap-2 align-items-center">
+              <div id="monthSelectGroup">
+                <select class="form-select form-select-sm fw-bold border-0" id="selectMonth" style="width: 120px;" onchange="updateTimelinePeriod()">
+                  <!-- JS Populated -->
+                </select>
+              </div>
+              <select class="form-select form-select-sm fw-bold border-0" id="selectYear" style="width: 85px;" onchange="updateTimelinePeriod()">
+                <!-- JS Populated -->
+              </select>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary px-2" onclick="navigatePeriod(1)">
+              <i class="bi bi-chevron-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Legend (ở giữa) -->
+        <div class="d-flex align-items-center justify-content-center gap-3 small text-muted flex-grow-1 mx-3" id="ganttLegendGroup">
+          <div class="d-flex align-items-center gap-1">
+            <span class="d-inline-block rounded-circle" style="width: 10px; height: 10px; background-color: #fee2e2; border: 1px solid #f87171;"></span>
+            <span>Cuối tuần</span>
+          </div>
+          <div class="d-flex align-items-center gap-1">
+            <span class="d-inline-block rounded-circle" style="width: 10px; height: 10px; background-color: #ffedd5; border: 1px solid #fb923c;"></span>
+            <span>Ngày lễ</span>
+          </div>
+          <div class="d-flex align-items-center gap-1">
+            <span class="d-inline-block rounded-circle" style="width: 10px; height: 10px; background-color: rgba(37, 99, 235, 0.15); border: 1px dashed rgba(37, 99, 235, 0.8);"></span>
+            <span>Hôm nay</span>
+          </div>
+        </div>
+
+        <!-- Chế độ hiển thị Segmented Tabs (ở lề phải) -->
+        <div class="bg-white p-1 rounded-3 border d-flex gap-1 shadow-sm ms-auto" style="background: rgba(255,255,255,0.8); backdrop-filter: blur(8px);">
+          <button class="btn btn-sm px-3 py-2 rounded-2 fw-semibold transition-all gantt-view-btn active" id="view-day" onclick="changeViewMode('day')">
+            <i class="bi bi-calendar-date me-1"></i> Ngày
+          </button>
+          <button class="btn btn-sm px-3 py-2 rounded-2 fw-semibold transition-all gantt-view-btn" id="view-week" onclick="changeViewMode('week')">
+            <i class="bi bi-calendar-week me-1"></i> Tuần
+          </button>
+          <button class="btn btn-sm px-3 py-2 rounded-2 fw-semibold transition-all gantt-view-btn" id="view-month" onclick="changeViewMode('month')">
+            <i class="bi bi-calendar-month me-1"></i> Tháng
+          </button>
+          <button class="btn btn-sm px-3 py-2 rounded-2 fw-semibold transition-all gantt-view-btn" id="view-quarter" onclick="changeViewMode('quarter')">
+            <i class="bi bi-calendar3 me-1"></i> Quý
+          </button>
+        </div>
+      </div>
+
+      <!-- Gantt Workspace Area -->
+      <div class="gantt-workspace">
+        
+        <!-- Left Pane: Tree -->
+        <div class="gantt-tree-pane">
+          <div class="gantt-tree-header">
+            <span>DỰ ÁN & CÔNG TÁC</span>
+          </div>
+          <div class="gantt-tree-body" id="ganttTreeBody">
+            <!-- Dynamic tree list -->
+          </div>
+        </div>
+
+        <!-- Resizer co giãn cho vùng 1 (cây danh mục) và vùng 2 (timeline) -->
+        <div class="gantt-resizer" id="ganttResizer"></div>
+
+        <!-- Right Pane: Timeline Grid -->
+        <div class="gantt-timeline-pane" id="ganttTimelinePane">
+          <div class="gantt-timeline-grid" id="ganttTimelineGrid">
+            <!-- Grid background columns for highlight (weekend, holiday, today) -->
+            <div id="ganttGridBackground" style="position: absolute; top: var(--row-height); bottom: 0; left: 0; right: 0; z-index: 1; pointer-events: none; display: flex;"></div>
+            
+            <div class="gantt-timeline-header" id="ganttTimelineHeader" style="position: sticky; top: 0; z-index: 20;">
+              <!-- Day columns -->
+            </div>
+            
+            <div id="ganttTimelineBars" style="position: relative; z-index: 10;">
+              <!-- Timeline rows corresponding to tree rows -->
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- MODALS SECTION -->
+
+  <!-- Modal Chi Tiết Dự Án -->
+  <div class="modal fade" id="projectDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold" id="detailModalTitle">Chi tiết dự án</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="detailModalBody">
+          <!-- JS Rendered -->
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Đóng</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Thêm/Sửa Dự Án -->
+  <div class="modal fade" id="projectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold" id="projectModalTitle">Thêm Dự Án Mới</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="projectForm">
+            <input type="hidden" id="projId">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Mã dự án (Tự động sinh)</label>
+                <input type="text" class="form-control bg-light text-muted" id="projCode" readonly placeholder="Hệ thống tự sinh">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Tên dự án *</label>
+                <input type="text" class="form-control" id="projName" required placeholder="Nhập tên dự án">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Năm thực hiện *</label>
+                <input type="number" class="form-control" id="projYear" required placeholder="Ví dụ: 2026">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Phụ trách kỹ thuật</label>
+                <select class="form-select" id="projTechStaff">
+                  <option value="">Chọn nhân viên</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Ngày bắt đầu</label>
+                <input type="date" class="form-control" id="projStart">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Ngày kết thúc</label>
+                <input type="date" class="form-control" id="projEnd">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Tổng mức đầu tư (đ)</label>
+                <input type="number" class="form-control" id="projBudget" placeholder="Nhập số tiền">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Trạng thái dự án</label>
+                <select class="form-select" id="projStatus">
+                  <option value="Chuẩn bị đầu tư">Chuẩn bị đầu tư</option>
+                  <option value="Đang thực hiện">Đang thực hiện</option>
+                  <option value="Hoàn thành">Hoàn thành</option>
+                  <option value="Tạm ngưng">Tạm ngưng</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label small fw-bold">Mô tả dự án</label>
+                <textarea class="form-control" id="projDesc" rows="3" placeholder="Nhập mô tả dự án..."></textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-primary px-4" onclick="saveProject()">Lưu lại</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Thêm/Sửa Công Tác (Nhiệm vụ Gantt) -->
+  <div class="modal fade" id="taskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold" id="taskModalTitle">Thêm Công Tác</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="taskForm">
+            <input type="hidden" id="taskId">
+            <input type="hidden" id="taskProjCode">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Dự án</label>
+                <input type="text" class="form-control bg-light text-muted" id="taskProjName" readonly>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Mã công tác (Tự động sinh)</label>
+                <input type="text" class="form-control bg-light text-muted" id="taskCode" readonly placeholder="Hệ thống tự sinh">
+              </div>
+              <div class="col-md-12">
+                <label class="form-label small fw-bold">Tên công tác *</label>
+                <input type="text" class="form-control" id="taskName" required placeholder="Nhập tên công tác">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Ngày bắt đầu *</label>
+                <input type="date" class="form-control" id="taskStart" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Ngày kết thúc *</label>
+                <input type="date" class="form-control" id="taskEnd" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Giá trị công tác (đ)</label>
+                <input type="number" class="form-control" id="taskVal" placeholder="Nhập giá trị">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Người phụ trách kỹ thuật</label>
+                <select class="form-select" id="taskTechStaff">
+                  <option value="">Chọn nhân viên</option>
+                </select>
+              </div>
+              <div class="col-md-12">
+                <label class="form-label small fw-bold">Ghi chú</label>
+                <input type="text" class="form-control" id="taskNote" placeholder="Ghi chú thêm...">
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-primary px-4" id="btnSaveTaskGantt" onclick="saveTask()">Lưu lại</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Xác nhận Hoàn thành Kết chuyển -->
+  <div class="modal fade" id="confirmDoneModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 480px;">
+      <div class="modal-content">
+        <div class="modal-header border-0 pb-0">
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center pt-0 px-4">
+          <div class="mb-3 text-success">
+            <i class="bi bi-check-circle-fill" style="font-size: 3.5rem;"></i>
+          </div>
+          <h5 class="fw-bold mb-2">Xác nhận hoàn thành công tác</h5>
+          <p class="text-muted small" id="confirmDoneMsg">Bạn có chắc chắn muốn xác nhận hoàn thành công tác này để kết chuyển vào hồ sơ thanh toán?</p>
+        </div>
+        <div class="modal-footer border-0 justify-content-center pb-4">
+          <button type="button" class="btn btn-light px-4 border" data-bs-dismiss="modal">Đóng</button>
+          <button type="button" class="btn btn-success px-4" id="btnConfirmDoneAction">Xác nhận</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Xác nhận Xóa -->
+  <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
+      <div class="modal-content">
+        <div class="modal-header border-0 pb-0">
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center pt-0 px-4">
+          <div class="mb-3 text-danger">
+            <i class="bi bi-exclamation-triangle-fill" style="font-size: 3.5rem;"></i>
+          </div>
+          <h5 class="fw-bold mb-2" id="deleteModalTitle">Xác nhận xóa</h5>
+          <p class="text-muted small" id="deleteModalMsg">Hành động này không thể hoàn tác. Bạn có chắc chắn muốn xóa bản ghi này?</p>
+        </div>
+        <div class="modal-footer border-0 justify-content-center pb-4">
+          <button type="button" class="btn btn-light px-4 border" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-danger px-4" id="btnConfirmDeleteAction">Đồng ý xóa</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Shared API Helper -->
+  <?!= include('api'); ?>
+
+  <!-- Fallback for local testing if GAS include didn't run -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        login:  (email, password)  => apiPost({ action: 'login',  email, password })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+
+  <!-- JS Logic -->
+  <script>
+    // Configs
+    let COL_WIDTH = 40; // var(--col-width)
+    let currentViewMode = 'day'; // day, week, month, quarter
+    let projects = [];
+    let ganttTasks = [];
+    let staffList = [];
+    let holidays = [];
+    let projectCollapseState = {}; // maDA -> boolean (true: collapsed, false: expanded)
+    
+    // PHÂN QUYỀN: Xác định quyền quản lý
+    const isManager = userProfile && (
+      (userProfile.role && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.role)) ||
+      (userProfile.chucVu && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.chucVu))
+    );
+    
+    // State of Month Selector
+    let currentYear = new Date().getFullYear();
+    let currentMonth = new Date().getMonth() + 1; // 1-indexed
+
+    // Bootstrap Modal instances
+    let projectModal, taskModal, projectDetailsModal, deleteConfirmModal, confirmDoneModal;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Init Modals
+      projectModal = new bootstrap.Modal(document.getElementById('projectModal'));
+      taskModal = new bootstrap.Modal(document.getElementById('taskModal'));
+      projectDetailsModal = new bootstrap.Modal(document.getElementById('projectDetailsModal'));
+      deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+      confirmDoneModal = new bootstrap.Modal(document.getElementById('confirmDoneModal'));
+
+      // Populate Month & Year Dropdowns
+      populatePeriodSelectors();
+
+      // Fetch init data
+      await loadInitialData();
+
+      // Setup scroll sync
+      setupScrollSync();
+
+      // Init Resizer
+      initResizer();
+
+      // Listen to window resize to dynamically scale Gantt columns
+      window.addEventListener('resize', () => {
+        renderGanttBoard();
+      });
+    });
+
+    // Helper functions for date format DD/MM/YYYY
+    function parseDateStr(str) {
+      if (!str) return null;
+      str = String(str).trim();
+      if (!str) return null;
+      
+      // Định dạng DD/MM/YYYY
+      if (str.includes('/')) {
+        const parts = str.split('/');
+        if (parts.length === 3) {
+          const d = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const y = parseInt(parts[2], 10);
+          return new Date(y, m, d);
+        }
+      }
+      // Định dạng YYYY-MM-DD
+      if (str.includes('-')) {
+        const parts = str.split('-');
+        if (parts.length === 3) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          return new Date(y, m, d);
+        }
+      }
+      
+      const parsed = new Date(str);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function formatDateStr(date) {
+      if (!date) return "";
+      if (!(date instanceof Date)) {
+        date = new Date(date);
+      }
+      if (isNaN(date.getTime())) return "";
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
+
+    function formatDateDDMM(date) {
+      if (!date) return "";
+      if (!(date instanceof Date)) {
+        date = new Date(date);
+      }
+      if (isNaN(date.getTime())) return "";
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      return `${d}/${m}`;
+    }
+
+    function formatCurrencyVN(val) {
+      if (val === undefined || val === null || val === '') return '0';
+      const num = Math.round(parseFloat(val));
+      if (isNaN(num)) return val;
+      return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+
+    function formatDateForInput(dateStr) {
+      const d = parseDateStr(dateStr);
+      if (!d) return "";
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // Convert date YYYY-MM-DD to DD/MM/YYYY
+    function formatDateFromInput(dateStr) {
+      if (!dateStr) return "";
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return dateStr;
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+
+    function formatMoney(amount) {
+      if (!amount) return "0 đ";
+      return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+    }
+
+    // Populate selects
+    function populatePeriodSelectors() {
+      const monthSelect = document.getElementById('selectMonth');
+      const yearSelect = document.getElementById('selectYear');
+      
+      // Populate months
+      if (monthSelect) {
+        monthSelect.innerHTML = "";
+        for (let m = 1; m <= 12; m++) {
+          const opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = `Tháng ${String(m).padStart(2, '0')}`;
+          if (m === currentMonth) opt.selected = true;
+          monthSelect.appendChild(opt);
+        }
+      }
+
+      // Populate years
+      if (yearSelect) {
+        yearSelect.innerHTML = "";
+        const thisYear = new Date().getFullYear();
+        for (let y = thisYear - 5; y <= thisYear + 5; y++) {
+          const opt = document.createElement('option');
+          opt.value = y;
+          opt.textContent = `${y}`;
+          if (y === currentYear) opt.selected = true;
+          yearSelect.appendChild(opt);
+        }
+      }
+    }
+
+    function navigatePeriod(dir) {
+      if (currentViewMode === 'day') {
+        currentMonth += dir;
+        if (currentMonth > 12) {
+          currentMonth = 1;
+          currentYear++;
+        } else if (currentMonth < 1) {
+          currentMonth = 12;
+          currentYear--;
+        }
+        const mSelect = document.getElementById('selectMonth');
+        if (mSelect) mSelect.value = currentMonth;
+      } else {
+        currentYear += dir;
+      }
+      const ySelect = document.getElementById('selectYear');
+      if (ySelect) ySelect.value = currentYear;
+      renderGanttBoard();
+    }
+
+    function updateTimelinePeriod() {
+      const mSelect = document.getElementById('selectMonth');
+      const ySelect = document.getElementById('selectYear');
+      if (mSelect) currentMonth = parseInt(mSelect.value, 10);
+      if (ySelect) currentYear = parseInt(ySelect.value, 10);
+      renderGanttBoard();
+    }
+
+    function changeViewMode(mode) {
+      currentViewMode = mode;
+      
+      // Update active state in segmented control
+      document.querySelectorAll('.gantt-view-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      const activeBtn = document.getElementById(`view-${mode}`);
+      if (activeBtn) activeBtn.classList.add('active');
+      
+      // Set column width based on mode
+      if (mode === 'day') {
+        COL_WIDTH = 40;
+      } else if (mode === 'week') {
+        COL_WIDTH = 75;
+      } else if (mode === 'month') {
+        COL_WIDTH = 120;
+      } else if (mode === 'quarter') {
+        COL_WIDTH = 220;
+      }
+      document.documentElement.style.setProperty('--col-width', COL_WIDTH + 'px');
+      
+      // Toggle controls visibility
+      const monthSelectGroup = document.getElementById('monthSelectGroup');
+      const legendGroup = document.getElementById('ganttLegendGroup');
+      
+      if (mode === 'day') {
+        if (monthSelectGroup) monthSelectGroup.classList.remove('d-none');
+        if (legendGroup) legendGroup.classList.remove('d-none');
+      } else {
+        if (monthSelectGroup) monthSelectGroup.classList.add('d-none');
+        if (legendGroup) legendGroup.classList.add('d-none');
+      }
+      
+      renderGanttBoard();
+    }
+
+    // Toast utility
+    function showToast(msg, type = "success") {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast-custom ${type}`;
+      toast.innerHTML = `
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi ${type === 'success' ? 'bi-check-circle-fill text-success' : 'bi-exclamation-triangle-fill text-danger'}"></i>
+          <div>${msg}</div>
+        </div>
+      `;
+      container.appendChild(toast);
+      
+      // Trigger reflow
+      toast.offsetHeight;
+      toast.classList.add('show');
+
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // Scroll synchronization
+    function setupScrollSync() {
+      const timelinePane = document.getElementById('ganttTimelinePane');
+      const treeBody = document.getElementById('ganttTreeBody');
+      
+      // Sync vertical scroll between left tree pane and right timeline pane
+      timelinePane.addEventListener('scroll', () => {
+        treeBody.scrollTop = timelinePane.scrollTop;
+      });
+      
+      treeBody.addEventListener('scroll', () => {
+        timelinePane.scrollTop = treeBody.scrollTop;
+      });
+    }
+
+    // Khởi tạo resizer co giãn cho vùng 1 (cây danh mục) và vùng 2 (timeline)
+    function initResizer() {
+      const resizer = document.getElementById('ganttResizer');
+      const leftPane = document.querySelector('.gantt-tree-pane');
+      
+      if (!resizer || !leftPane) return;
+      
+      let startX, startWidth;
+      
+      resizer.addEventListener('mousedown', initDrag, false);
+      
+      function initDrag(e) {
+        startX = e.clientX;
+        startWidth = parseInt(document.defaultView.getComputedStyle(leftPane).width, 10);
+        resizer.classList.add('resizing');
+        
+        document.documentElement.addEventListener('mousemove', doDrag, false);
+        document.documentElement.addEventListener('mouseup', stopDrag, false);
+        
+        e.preventDefault();
+      }
+      
+      function doDrag(e) {
+        let newWidth = startWidth + (e.clientX - startX);
+        if (newWidth < 150) newWidth = 150;
+        if (newWidth > 600) newWidth = 600;
+        
+        leftPane.style.width = newWidth + 'px';
+        leftPane.style.minWidth = newWidth + 'px';
+        
+        localStorage.setItem('ganttTreeWidth', newWidth);
+        renderGanttBoard();
+      }
+      
+      function stopDrag(e) {
+        resizer.classList.remove('resizing');
+        document.documentElement.removeEventListener('mousemove', doDrag, false);
+        document.documentElement.removeEventListener('mouseup', stopDrag, false);
+      }
+      
+      // Load saved width
+      const savedWidth = localStorage.getItem('ganttTreeWidth');
+      if (savedWidth) {
+        const w = parseInt(savedWidth, 10);
+        leftPane.style.width = w + 'px';
+        leftPane.style.minWidth = w + 'px';
+      } else {
+        leftPane.style.width = '280px';
+        leftPane.style.minWidth = '280px';
+      }
+    }
+
+    // Load initial data
+    async function loadInitialData() {
+      try {
+        // Tải Batch tất cả dữ liệu cần thiết cho Sơ đồ Gantt
+        const batchData = await API.batchList(['holidays', 'nhansu', 'duan', 'gantt']).catch(err => {
+          console.warn("Lỗi tải Batch dữ liệu Gantt, thực hiện gọi tuần tự fallback:", err);
+          return {};
+        });
+
+        // 1. Xử lý Holidays
+        const hData = batchData.holidays || [];
+        holidays = hData.map(h => {
+          const d = parseDateStr(h.ngay);
+          return d ? d.toDateString() : null;
+        }).filter(Boolean);
+
+        // 2. Xử lý Nhân sự
+        staffList = batchData.nhansu || [];
+        populateStaffDropdowns();
+
+        // 3. Xử lý Dự án & Gantt Tasks
+        projects = batchData.duan || [];
+        ganttTasks = batchData.gantt || [];
+
+        // PHÂN QUYỀN: Lọc dự án và công tác Gantt cho nhân viên thường
+        if (!isManager && userProfile && userProfile.hoTen) {
+          const hoTenClean = userProfile.hoTen.trim().toLowerCase();
+          projects = projects.filter(p => {
+            const phuTrachKT = String(p.phuTrachKT || '').trim().toLowerCase();
+            const phuTrachKeToan = String(p.phuTrachKeToan || '').trim().toLowerCase();
+            return phuTrachKT.includes(hoTenClean) || phuTrachKeToan.includes(hoTenClean) || hoTenClean.includes(phuTrachKT) || hoTenClean.includes(phuTrachKeToan);
+          });
+          
+          const projCodes = new Set(projects.map(p => String(p.maDA).trim()));
+          ganttTasks = ganttTasks.filter(t => projCodes.has(String(t.maDA).trim()));
+        }
+
+        // Build Project Filter dropdown
+        populateProjectFilter();
+
+        // Render board
+        renderGanttBoard();
+
+      } catch (err) {
+        showToast("Lỗi đồng bộ dữ liệu: " + err.message, "error");
+      }
+    }
+
+    function populateStaffDropdowns() {
+      const selects = [document.getElementById('projTechStaff'), document.getElementById('taskTechStaff')];
+      selects.forEach(sel => {
+        if (!sel) return;
+        // Keep first option
+        sel.innerHTML = `<option value="">Chọn nhân viên</option>`;
+        staffList.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.hoTen;
+          opt.textContent = s.hoTen + ` (${s.chucVu || 'Nhân viên'})`;
+          sel.appendChild(opt);
+        });
+      });
+    }
+
+    function populateProjectFilter() {
+      const filter = document.getElementById('projectFilter');
+      filter.innerHTML = `<option value="all">--- Tất cả dự án ---</option>`;
+      
+      const activeProjCodes = new Set(ganttTasks.map(t => String(t.maDA).trim()));
+      
+      projects.forEach(p => {
+        const pCode = String(p.maDA).trim();
+        if (activeProjCodes.has(pCode)) {
+          const opt = document.createElement('option');
+          opt.value = pCode;
+          opt.textContent = p.tenDA;
+          filter.appendChild(opt);
+        }
+      });
+    }
+
+    // Filter board
+    function filterGantt() {
+      renderGanttBoard();
+    }
+
+    // Render Gantt
+    function renderGanttBoard() {
+      const selectedProjFilter = document.getElementById('projectFilter').value;
+      const treeBody = document.getElementById('ganttTreeBody');
+      const timelineHeader = document.getElementById('ganttTimelineHeader');
+      const timelineBars = document.getElementById('ganttTimelineBars');
+      const gridBackground = document.getElementById('ganttGridBackground');
+      
+      treeBody.innerHTML = "";
+      timelineHeader.innerHTML = "";
+      timelineBars.innerHTML = "";
+      if (gridBackground) gridBackground.innerHTML = "";
+
+      let numColumns = 0;
+      let rangeStart = null;
+      let rangeEnd = null;
+      const today = new Date();
+
+      // 1. Render Timeline Header and Background Columns based on ViewMode
+      if (currentViewMode === 'day') {
+        numColumns = new Date(currentYear, currentMonth, 0).getDate();
+        rangeStart = new Date(currentYear, currentMonth - 1, 1);
+        rangeEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59);
+        
+        const workspace = document.querySelector('.gantt-workspace');
+        const leftPane = document.querySelector('.gantt-tree-pane');
+        const resizer = document.getElementById('ganttResizer');
+        if (workspace && leftPane) {
+          const resizerWidth = resizer ? resizer.offsetWidth : 4;
+          const availableWidth = workspace.clientWidth - leftPane.offsetWidth - resizerWidth - 8;
+          if (availableWidth > 0) {
+            // Tính toán COL_WIDTH động để phân chia đều số ngày vừa khít khung nhìn
+            COL_WIDTH = availableWidth / numColumns;
+            document.documentElement.style.setProperty('--col-width', COL_WIDTH + 'px');
+          }
+        }
+        
+        const dayNames = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+        for (let day = 1; day <= numColumns; day++) {
+          const dateObj = new Date(currentYear, currentMonth - 1, day);
+          const dayIdx = dateObj.getDay();
+          const isWeekend = (dayIdx === 0 || dayIdx === 6);
+          const isHoliday = holidays.includes(dateObj.toDateString());
+          const isToday = (dateObj.toDateString() === today.toDateString());
+
+          // Header column
+          const dayCol = document.createElement('div');
+          dayCol.className = `gantt-day-col ${isWeekend ? 'weekend' : ''} ${isHoliday ? 'holiday' : ''} ${isToday ? 'today' : ''}`;
+          dayCol.innerHTML = `
+            <div class="day-num">${day}</div>
+            <div class="day-name">${dayNames[dayIdx]}</div>
+          `;
+          timelineHeader.appendChild(dayCol);
+
+          // Grid background column
+          if (gridBackground) {
+            const bgCol = document.createElement('div');
+            bgCol.className = `gantt-grid-col-bg ${isWeekend ? 'weekend' : ''} ${isHoliday ? 'holiday' : ''} ${isToday ? 'today' : ''}`;
+            gridBackground.appendChild(bgCol);
+          }
+        }
+      } else if (currentViewMode === 'week') {
+        numColumns = 52;
+        rangeStart = new Date(currentYear, 0, 1);
+        rangeEnd = new Date(currentYear, 11, 31, 23, 59, 59);
+
+        for (let w = 1; w <= 52; w++) {
+          const weekStartDate = new Date(currentYear, 0, 1 + (w - 1) * 7);
+          const dayStr = String(weekStartDate.getDate()).padStart(2, '0');
+          const monthStr = String(weekStartDate.getMonth() + 1).padStart(2, '0');
+
+          const dayCol = document.createElement('div');
+          dayCol.className = `gantt-day-col`;
+          dayCol.innerHTML = `
+            <div class="day-num" style="font-size: 0.8rem;">T${w}</div>
+            <div class="day-name" style="font-size: 0.6rem;">${dayStr}/${monthStr}</div>
+          `;
+          timelineHeader.appendChild(dayCol);
+
+          if (gridBackground) {
+            const bgCol = document.createElement('div');
+            bgCol.className = `gantt-grid-col-bg`;
+            gridBackground.appendChild(bgCol);
+          }
+        }
+      } else if (currentViewMode === 'month') {
+        numColumns = 12;
+        rangeStart = new Date(currentYear, 0, 1);
+        rangeEnd = new Date(currentYear, 11, 31, 23, 59, 59);
+
+        for (let m = 1; m <= 12; m++) {
+          const dayCol = document.createElement('div');
+          dayCol.className = `gantt-day-col`;
+          dayCol.innerHTML = `
+            <div class="day-num" style="font-size: 0.8rem;">Th.${m}</div>
+            <div class="day-name" style="font-size: 0.6rem;">${currentYear}</div>
+          `;
+          timelineHeader.appendChild(dayCol);
+
+          if (gridBackground) {
+            const bgCol = document.createElement('div');
+            bgCol.className = `gantt-grid-col-bg`;
+            gridBackground.appendChild(bgCol);
+          }
+        }
+      } else if (currentViewMode === 'quarter') {
+        numColumns = 4;
+        rangeStart = new Date(currentYear, 0, 1);
+        rangeEnd = new Date(currentYear, 11, 31, 23, 59, 59);
+
+        const quarters = ["Quý I", "Quý II", "Quý III", "Quý IV"];
+        const quarterLabels = ["T1 - T3", "T4 - T6", "T7 - T9", "T10 - T12"];
+
+        for (let q = 1; q <= 4; q++) {
+          const dayCol = document.createElement('div');
+          dayCol.className = `gantt-day-col`;
+          dayCol.innerHTML = `
+            <div class="day-num" style="font-size: 0.85rem;">${quarters[q - 1]}</div>
+            <div class="day-name" style="font-size: 0.65rem;">${quarterLabels[q - 1]}</div>
+          `;
+          timelineHeader.appendChild(dayCol);
+
+          if (gridBackground) {
+            const bgCol = document.createElement('div');
+            bgCol.className = `gantt-grid-col-bg`;
+            gridBackground.appendChild(bgCol);
+          }
+        }
+      }
+
+      // Adjust timeline grid width
+      const totalWidth = numColumns * COL_WIDTH;
+      document.getElementById('ganttTimelineGrid').style.width = `${totalWidth}px`;
+
+      // Formulate map of project tasks (key: string)
+      const projTasksMap = {};
+      ganttTasks.forEach(task => {
+        const pCode = String(task.maDA).trim();
+        if (!projTasksMap[pCode]) projTasksMap[pCode] = [];
+        projTasksMap[pCode].push(task);
+      });
+
+      // 2. Prepare Hierarchy Data - Chỉ lọc hiển thị dự án có công tác trong sheet Gantt
+      let filteredProjects = projects.filter(p => {
+        const pCode = String(p.maDA).trim();
+        return projTasksMap[pCode] && projTasksMap[pCode].length > 0;
+      });
+
+      if (selectedProjFilter !== "all") {
+        filteredProjects = filteredProjects.filter(p => String(p.maDA).trim() === String(selectedProjFilter).trim());
+      }
+
+      // Render rows
+      filteredProjects.forEach(proj => {
+        const projCode = String(proj.maDA).trim();
+        const tasks = projTasksMap[projCode] || [];
+        const isCollapsed = projectCollapseState[projCode] || false;
+
+        // Calculate Project dynamic start/end based on tasks if blank
+        let projStart = parseDateStr(proj.ngayBatDau);
+        let projEnd = parseDateStr(proj.ngayKetThuc);
+        
+        if (tasks.length > 0) {
+          const taskStartDates = tasks.map(t => parseDateStr(t.ngayBatDau)).filter(Boolean);
+          const taskEndDates = tasks.map(t => parseDateStr(t.ngayKetThuc)).filter(Boolean);
+          
+          if (taskStartDates.length > 0) {
+            const minStart = new Date(Math.min.apply(null, taskStartDates));
+            if (!projStart || minStart < projStart) projStart = minStart;
+          }
+          if (taskEndDates.length > 0) {
+            const maxEnd = new Date(Math.max.apply(null, taskEndDates));
+            if (!projEnd || maxEnd > projEnd) projEnd = maxEnd;
+          }
+        }
+
+        // --- Render Project Row (Tree Pane) ---
+        const projTreeRow = document.createElement('div');
+        projTreeRow.className = "gantt-row gantt-tree-row project-row";
+        if (proj.moTa) {
+          projTreeRow.setAttribute('title', proj.moTa);
+        }
+        
+        projTreeRow.innerHTML = `
+          <div class="tree-meta-wrap">
+            <span class="expand-toggle ${isCollapsed ? 'collapsed' : ''}" onclick="toggleProjectCollapse('${projCode}')">
+              <i class="bi bi-chevron-down"></i>
+            </span>
+            <span class="tree-title" title="${proj.moTa || 'Không có mô tả'}">${proj.tenDA}</span>
+          </div>
+          <div class="tree-actions">
+            ${isManager ? `
+              <button class="tree-btn btn-add" onclick="openTaskModal(null, '${projCode}')" title="Thêm công tác"><i class="bi bi-plus-lg text-primary"></i></button>
+              <button class="tree-btn btn-view" onclick="showProjectDetails('${projCode}')" title="Xem chi tiết dự án"><i class="bi bi-eye"></i></button>
+              <button class="tree-btn btn-duplicate" onclick="duplicateProject('${projCode}')" title="Nhân bản dự án"><i class="bi bi-copy"></i></button>
+              <button class="tree-btn btn-edit" onclick="openProjectModal('${projCode}')" title="Sửa dự án"><i class="bi bi-pencil"></i></button>
+              <button class="tree-btn btn-delete" onclick="confirmDelete('duan', '${proj.id || projCode}')" title="Xóa dự án"><i class="bi bi-trash"></i></button>
+            ` : `
+              <button class="tree-btn btn-view" onclick="showProjectDetails('${projCode}')" title="Xem chi tiết dự án"><i class="bi bi-eye"></i></button>
+            `}
+          </div>
+        `;
+        treeBody.appendChild(projTreeRow);
+
+        // --- Render Project Row (Timeline Pane) ---
+        const projTimelineRow = document.createElement('div');
+        projTimelineRow.className = "gantt-row gantt-timeline-row";
+        if (proj.moTa) {
+          projTimelineRow.setAttribute('title', proj.moTa);
+        }
+        
+        if (projStart && projEnd) {
+          const barStyle = calculateBarPosAndWidth(projStart, projEnd);
+          if (barStyle) {
+            const startStr = formatDateDDMM(projStart);
+            const endStr = formatDateDDMM(projEnd);
+            const labelText = `${startStr}-${endStr} | Kỹ thuật: ${proj.phuTrachKT || ''} | Kế toán: ${proj.phuTrachKeToan || ''}`;
+            
+            projTimelineRow.innerHTML = `
+              <div class="gantt-bar-wrapper project-bar" style="left: ${barStyle.left}px; width: ${barStyle.width}px;" onclick="showProjectDetails('${projCode}')" title="${proj.moTa || 'Không có mô tả'}">
+                <span class="bar-label">${labelText}</span>
+              </div>
+            `;
+          }
+        }
+        timelineBars.appendChild(projTimelineRow);
+
+        // --- Render Tasks Row if expanded ---
+        if (!isCollapsed) {
+          tasks.forEach(task => {
+            const tStart = parseDateStr(task.ngayBatDau);
+            const tEnd = parseDateStr(task.ngayKetThuc);
+            const isCompleted = task.trangThai === "Hoàn thành";
+            const taskKeyId = task.id || task.maCT;
+
+            // --- Render Task Row (Tree Pane) ---
+            const taskTreeRow = document.createElement('div');
+            taskTreeRow.className = "gantt-row gantt-tree-row task-row";
+            
+            taskTreeRow.innerHTML = `
+              <div class="tree-meta-wrap">
+                <span class="custom-check ${isCompleted ? 'checked' : ''}" ${isManager ? `onclick="toggleTaskCheckbox('${taskKeyId}', ${isCompleted})"` : 'style="cursor: not-allowed;" title="Chỉ Quản lý được cập nhật trạng thái"'}></span>
+                <span class="tree-title" title="${task.tenCT}">${task.tenCT}</span>
+              </div>
+              <div class="tree-actions">
+                ${isManager ? `
+                  <button class="tree-btn btn-duplicate" onclick="duplicateTask('${taskKeyId}')" title="Nhân bản công tác"><i class="bi bi-copy"></i></button>
+                  <button class="tree-btn btn-edit" onclick="openTaskModal('${taskKeyId}')" title="Sửa công tác"><i class="bi bi-pencil"></i></button>
+                  <button class="tree-btn btn-delete" onclick="confirmDelete('gantt', '${taskKeyId}')" title="Xóa công tác"><i class="bi bi-trash"></i></button>
+                ` : ``}
+              </div>
+            `;
+            treeBody.appendChild(taskTreeRow);
+
+            // --- Render Task Row (Timeline Pane) ---
+            const taskTimelineRow = document.createElement('div');
+            taskTimelineRow.className = "gantt-row gantt-timeline-row";
+            
+            if (tStart && tEnd) {
+              const barStyle = calculateBarPosAndWidth(tStart, tEnd);
+              if (barStyle) {
+                const timeStr = `${formatDateDDMM(tStart)} - ${formatDateDDMM(tEnd)}`;
+                const valStr = formatCurrencyVN(task.giaTriCT);
+                taskTimelineRow.innerHTML = `
+                  <div class="gantt-bar-wrapper task-bar ${isCompleted ? 'completed' : ''}" style="left: ${barStyle.left}px; width: ${barStyle.width}px;" onclick="openTaskModal('${taskKeyId}')"
+                       onmouseenter="showGanttTooltip(event, '${timeStr}', '${valStr}')"
+                       onmousemove="moveGanttTooltip(event)"
+                       onmouseleave="hideGanttTooltip()">
+                    <span class="task-bar-label">${task.tenCT}</span>
+                  </div>
+                `;
+              }
+            }
+            timelineBars.appendChild(taskTimelineRow);
+          });
+        }
+      });
+    }
+
+    // Toggle project expand/collapse
+    function toggleProjectCollapse(projCode) {
+      projectCollapseState[projCode] = !projectCollapseState[projCode];
+      renderGanttBoard();
+    }
+
+    // Calculate position for timeline bar
+    function calculateBarPosAndWidth(start, end) {
+      let rangeStart = null;
+      let rangeEnd = null;
+      
+      if (currentViewMode === 'day') {
+        rangeStart = new Date(currentYear, currentMonth - 1, 1);
+        rangeEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59);
+      } else {
+        // Chế độ tuần, tháng, quý đều hiển thị cả năm
+        rangeStart = new Date(currentYear, 0, 1);
+        rangeEnd = new Date(currentYear, 11, 31, 23, 59, 59);
+      }
+
+      // Giới hạn ngày trong dải hiển thị
+      let renderStart = new Date(Math.max(start.getTime(), rangeStart.getTime()));
+      let renderEnd = new Date(Math.min(end.getTime(), rangeEnd.getTime()));
+
+      if (renderStart > renderEnd) return null; // Nằm ngoài dải hiển thị
+
+      // Tính tổng số ngày trong dải hiển thị
+      const totalRangeMs = rangeEnd.getTime() - rangeStart.getTime();
+      const totalRangeDays = totalRangeMs / (1000 * 60 * 60 * 24);
+
+      // Tính offset của ngày bắt đầu so với rangeStart
+      const diffStartMs = renderStart.getTime() - rangeStart.getTime();
+      const offsetDays = diffStartMs / (1000 * 60 * 60 * 24);
+
+      // Tính thời lượng thực tế
+      const diffEndStartMs = renderEnd.getTime() - renderStart.getTime();
+      const durationDays = diffEndStartMs / (1000 * 60 * 60 * 24) + 1;
+
+      // Chiều rộng tổng của grid
+      let numColumns = 0;
+      if (currentViewMode === 'day') {
+        numColumns = new Date(currentYear, currentMonth, 0).getDate();
+      } else if (currentViewMode === 'week') {
+        numColumns = 52;
+      } else if (currentViewMode === 'month') {
+        numColumns = 12;
+      } else if (currentViewMode === 'quarter') {
+        numColumns = 4;
+      }
+      
+      const totalWidth = numColumns * COL_WIDTH;
+
+      // Tính left và width theo tỷ lệ ngày
+      const left = (offsetDays / totalRangeDays) * totalWidth;
+      const width = (durationDays / totalRangeDays) * totalWidth;
+
+      return { left, width };
+    }
+
+    // --- CHECKBOX COMPLETION LOGIC ---
+    let pendingTaskCheckId = null;
+    function toggleTaskCheckbox(id, isCompleted) {
+      if (isCompleted) {
+        confirmToggleTaskUncompleted(id);
+      } else {
+        pendingTaskCheckId = id;
+        confirmDoneModal.show();
+      }
+    }
+
+    // Modal confirm done action click
+    document.getElementById('btnConfirmDoneAction').addEventListener('click', async () => {
+      if (!pendingTaskCheckId) return;
+      confirmDoneModal.hide();
+      
+      try {
+        const task = ganttTasks.find(t => String(t.id || t.maCT) === String(pendingTaskCheckId));
+        if (!task) return;
+
+        task.trangThai = "Hoàn thành";
+        await API.update('gantt', pendingTaskCheckId, task);
+        showToast("Đã kết chuyển công tác thành công vào hồ sơ thanh toán!");
+        await loadInitialData();
+      } catch (err) {
+        showToast("Lỗi cập nhật: " + err.message, "error");
+      }
+    });
+
+    async function confirmToggleTaskUncompleted(id) {
+      if (!confirm("Bạn có chắc chắn muốn bỏ đánh dấu Hoàn thành cho công tác này không?")) return;
+      try {
+        const task = ganttTasks.find(t => String(t.id || t.maCT) === String(id));
+        if (!task) return;
+
+        task.trangThai = "Chưa hoàn thành";
+        await API.update('gantt', id, task);
+        showToast("Đã chuyển trạng thái công tác thành Chưa hoàn thành!");
+        await loadInitialData();
+      } catch (err) {
+        showToast("Lỗi cập nhật: " + err.message, "error");
+      }
+    }
+
+    // --- CRUD ACTIONS ---
+
+    // Detail Project Modal
+    function showProjectDetails(projCode) {
+      const proj = projects.find(p => String(p.maDA).trim() === String(projCode).trim());
+      if (!proj) return;
+
+      document.getElementById('detailModalTitle').textContent = `Dự án: ${proj.tenDA}`;
+      
+      // Build details body
+      let bodyHtml = `
+        <div class="row g-3">
+          <div class="col-md-6">
+            <span class="text-muted d-block small">Mã dự án</span>
+            <strong class="fs-6">${proj.maDA}</strong>
+          </div>
+          <div class="col-md-6">
+            <span class="text-muted d-block small">Năm thực hiện</span>
+            <strong>${proj.namThucHien}</strong>
+          </div>
+          <div class="col-md-6">
+            <span class="text-muted d-block small">Phụ trách kỹ thuật</span>
+            <strong>${proj.phuTrachKT || 'Chưa phân công'}</strong>
+          </div>
+          <div class="col-md-6">
+            <span class="text-muted d-block small">Phụ trách kế toán</span>
+            <strong>${proj.phuTrachKeToan || 'Chưa phân công'}</strong>
+          </div>
+          <div class="col-md-6">
+            <span class="text-muted d-block small">Thời gian thi công</span>
+            <strong>${proj.ngayBatDau || '---'} đến ${proj.ngayKetThuc || '---'}</strong>
+          </div>
+          <div class="col-md-6">
+            <span class="text-muted d-block small">Trạng thái</span>
+            <span class="badge bg-${proj.trangThai === 'Hoàn thành' ? 'success' : 'primary'}">${proj.trangThai || 'Đang thực hiện'}</span>
+          </div>
+          <div class="col-md-6">
+            <span class="text-muted d-block small">Tổng mức đầu tư</span>
+            <strong>${formatMoney(proj.tongMucDauTu)}</strong>
+          </div>
+          <div class="col-md-6">
+            <span class="text-muted d-block small">Loại Dự án</span>
+            <strong>${proj.loaiDA || '---'}</strong>
+          </div>
+          <div class="col-12">
+            <span class="text-muted d-block small">Mô tả</span>
+            <p class="mb-0 bg-light p-3 rounded" style="white-space: pre-wrap;">${proj.moTa || 'Không có mô tả.'}</p>
+          </div>
+        </div>
+      `;
+      document.getElementById('detailModalBody').innerHTML = bodyHtml;
+      projectDetailsModal.show();
+    }
+
+    // Open Project Add/Edit Modal
+    function openProjectModal(projCode = null) {
+      document.getElementById('projectForm').reset();
+      
+      if (projCode) {
+        // Edit Mode
+        const proj = projects.find(p => String(p.maDA).trim() === String(projCode).trim());
+        if (!proj) return;
+        
+        document.getElementById('projectModalTitle').textContent = "Cập nhật dự án";
+        document.getElementById('projId').value = proj.id || proj.maDA;
+        document.getElementById('projCode').value = proj.maDA;
+        document.getElementById('projName').value = proj.tenDA;
+        document.getElementById('projYear').value = proj.namThucHien;
+        document.getElementById('projTechStaff').value = proj.phuTrachKT || "";
+        document.getElementById('projStart').value = formatDateForInput(proj.ngayBatDau);
+        document.getElementById('projEnd').value = formatDateForInput(proj.ngayKetThuc);
+        document.getElementById('projBudget').value = proj.tongMucDauTu || "";
+        document.getElementById('projStatus').value = proj.trangThai || "Đang thực hiện";
+        document.getElementById('projDesc').value = proj.moTa || "";
+      } else {
+        // Add Mode
+        document.getElementById('projectModalTitle').textContent = "Thêm Dự Án Mới";
+        document.getElementById('projId').value = "";
+        document.getElementById('projCode').value = ""; // Auto generated
+      }
+
+      projectModal.show();
+    }
+
+    // Save Project
+    async function saveProject() {
+      const form = document.getElementById('projectForm');
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+
+      const id = document.getElementById('projId').value;
+      
+      const payload = {
+        tenDA: document.getElementById('projName').value,
+        namThucHien: parseInt(document.getElementById('projYear').value, 10),
+        phuTrachKT: document.getElementById('projTechStaff').value,
+        ngayBatDau: formatDateFromInput(document.getElementById('projStart').value),
+        ngayKetThuc: formatDateFromInput(document.getElementById('projEnd').value),
+        tongMucDauTu: document.getElementById('projBudget').value ? parseFloat(document.getElementById('projBudget').value) : "",
+        trangThai: document.getElementById('projStatus').value,
+        moTa: document.getElementById('projDesc').value
+      };
+
+      try {
+        if (id) {
+          // Update
+          payload.maDA = document.getElementById('projCode').value;
+          await API.update('duan', id, payload);
+          showToast("Cập nhật dự án thành công!");
+        } else {
+          // Create
+          const maxNum = projects.reduce((max, p) => {
+            const num = parseInt(String(p.maDA), 10);
+            return isNaN(num) ? max : Math.max(max, num);
+          }, 8179000);
+          payload.maDA = maxNum + 1;
+          
+          await API.create('duan', payload);
+          showToast("Thêm dự án mới thành công!");
+        }
+        
+        projectModal.hide();
+        await loadInitialData();
+      } catch (err) {
+        showToast("Lỗi lưu dự án: " + err.message, "error");
+      }
+    }
+
+    // Duplicate Project
+    async function duplicateProject(projCode) {
+      if (!confirm(`Bạn có chắc chắn muốn nhân bản dự án [${projCode}] cùng toàn bộ các công tác liên quan không?`)) return;
+      
+      try {
+        const srcProj = projects.find(p => String(p.maDA).trim() === String(projCode).trim());
+        if (!srcProj) return;
+
+        // 1. Tạo Project mới
+        const maxNum = projects.reduce((max, p) => {
+          const num = parseInt(String(p.maDA), 10);
+          return isNaN(num) ? max : Math.max(max, num);
+        }, 8179000);
+        const newProjCode = maxNum + 1;
+
+        const newProj = {
+          ...srcProj,
+          maDA: newProjCode,
+          tenDA: srcProj.tenDA + " (Bản sao)"
+        };
+        delete newProj.id;
+        
+        await API.create('duan', newProj);
+
+        // 2. Nhân bản các công tác liên quan
+        const srcTasks = ganttTasks.filter(t => String(t.maDA).trim() === String(projCode).trim());
+        for (let i = 0; i < srcTasks.length; i++) {
+          const srcT = srcTasks[i];
+          const nextSeqStr = String(i + 1).padStart(3, '0');
+          const newTCode = `${newProjCode}-${nextSeqStr}`;
+
+          const newT = {
+            ...srcT,
+            maCT: newTCode,
+            maDA: newProjCode,
+            trangThai: "Chưa hoàn thành"
+          };
+          delete newT.id;
+          await API.create('gantt', newT);
+        }
+
+        showToast("Nhân bản dự án và các công tác thành công!");
+        await loadInitialData();
+      } catch (err) {
+        showToast("Lỗi nhân bản: " + err.message, "error");
+      }
+    }
+
+    // Open Task Add/Edit Modal
+    function openTaskModal(taskId = null, projectCode = null) {
+      document.getElementById('taskForm').reset();
+
+      if (taskId) {
+        // Edit Mode
+        const task = ganttTasks.find(t => String(t.id || t.maCT) === String(taskId));
+        if (!task) return;
+
+        document.getElementById('taskModalTitle').textContent = "Sửa công tác";
+        document.getElementById('taskId').value = task.id || task.maCT;
+        document.getElementById('taskProjCode').value = task.maDA;
+        
+        const proj = projects.find(p => String(p.maDA).trim() === String(task.maDA).trim());
+        document.getElementById('taskProjName').value = proj ? `[${proj.maDA}] ${proj.tenDA}` : task.maDA;
+        
+        document.getElementById('taskCode').value = task.maCT;
+        document.getElementById('taskName').value = task.tenCT;
+        document.getElementById('taskStart').value = formatDateForInput(task.ngayBatDau);
+        document.getElementById('taskEnd').value = formatDateForInput(task.ngayKetThuc);
+        document.getElementById('taskVal').value = task.giaTriCT || "";
+        document.getElementById('taskTechStaff').value = task.phuTrachKT || "";
+        document.getElementById('taskNote').value = task.ghiChu || "";
+      } else {
+        // Add Mode
+        document.getElementById('taskModalTitle').textContent = "Thêm công tác mới";
+        document.getElementById('taskId').value = "";
+        document.getElementById('taskProjCode').value = projectCode;
+        
+        const proj = projects.find(p => String(p.maDA).trim() === String(projectCode).trim());
+        document.getElementById('taskProjName').value = proj ? `[${proj.maDA}] ${proj.tenDA}` : projectCode;
+        
+        document.getElementById('taskCode').value = ""; // Auto
+      }
+
+      // Read-only logic for non-managers
+      const isEditDisabled = !isManager;
+      document.getElementById('taskName').disabled = isEditDisabled;
+      document.getElementById('taskStart').disabled = isEditDisabled;
+      document.getElementById('taskEnd').disabled = isEditDisabled;
+      document.getElementById('taskVal').disabled = isEditDisabled;
+      document.getElementById('taskTechStaff').disabled = isEditDisabled;
+      document.getElementById('taskNote').disabled = isEditDisabled;
+
+      const btnSave = document.getElementById('btnSaveTaskGantt');
+      if (btnSave) {
+        btnSave.style.display = isEditDisabled ? 'none' : 'block';
+      }
+
+      if (!isManager && taskId) {
+        document.getElementById('taskModalTitle').textContent = "Chi tiết công tác";
+      }
+
+      taskModal.show();
+    }
+
+    // Save Task
+    async function saveTask() {
+      const form = document.getElementById('taskForm');
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+
+      const id = document.getElementById('taskId').value;
+      const projCode = document.getElementById('taskProjCode').value;
+
+      const payload = {
+        maDA: projCode,
+        tenCT: document.getElementById('taskName').value,
+        ngayBatDau: formatDateFromInput(document.getElementById('taskStart').value),
+        ngayKetThuc: formatDateFromInput(document.getElementById('taskEnd').value),
+        giaTriCT: document.getElementById('taskVal').value ? parseFloat(document.getElementById('taskVal').value) : "",
+        phuTrachKT: document.getElementById('taskTechStaff').value,
+        ghiChu: document.getElementById('taskNote').value
+      };
+
+      try {
+        if (id) {
+          // Update
+          payload.maCT = document.getElementById('taskCode').value;
+          const oldTask = ganttTasks.find(t => String(t.id || t.maCT) === String(id));
+          payload.trangThai = oldTask ? oldTask.trangThai : "Chưa hoàn thành";
+          await API.update('gantt', id, payload);
+          showToast("Cập nhật công tác thành công!");
+        } else {
+          // Create
+          const related = ganttTasks.filter(t => String(t.maDA).trim() === String(projCode).trim());
+          let maxSeq = 0;
+          related.forEach(t => {
+            const parts = String(t.maCT).split('-');
+            if (parts.length === 2) {
+              const seq = parseInt(parts[1], 10);
+              if (!isNaN(seq)) maxSeq = Math.max(maxSeq, seq);
+            }
+          });
+          const nextSeqStr = String(maxSeq + 1).padStart(3, '0');
+          payload.maCT = `${projCode}-${nextSeqStr}`;
+          payload.trangThai = "Chưa hoàn thành";
+
+          await API.create('gantt', payload);
+          showToast("Thêm công tác mới thành công!");
+        }
+
+        taskModal.hide();
+        await loadInitialData();
+      } catch (err) {
+        showToast("Lỗi lưu công tác: " + err.message, "error");
+      }
+    }
+
+    // Duplicate Task
+    async function duplicateTask(taskId) {
+      try {
+        const srcTask = ganttTasks.find(t => String(t.id || t.maCT) === String(taskId));
+        if (!srcTask) return;
+
+        const projCode = srcTask.maDA;
+        const related = ganttTasks.filter(t => String(t.maDA).trim() === String(projCode).trim());
+        let maxSeq = 0;
+        related.forEach(t => {
+          const parts = String(t.maCT).split('-');
+          if (parts.length === 2) {
+            const seq = parseInt(parts[1], 10);
+            if (!isNaN(seq)) maxSeq = Math.max(maxSeq, seq);
+          }
+        });
+        const nextSeqStr = String(maxSeq + 1).padStart(3, '0');
+        const newCode = `${projCode}-${nextSeqStr}`;
+
+        const newTask = {
+          ...srcTask,
+          maCT: newCode,
+          tenCT: srcTask.tenCT + " (Bản sao)",
+          trangThai: "Chưa hoàn thành"
+        };
+        delete newTask.id;
+
+        await API.create('gantt', newTask);
+        showToast("Nhân bản công tác thành công!");
+        await loadInitialData();
+      } catch (err) {
+        showToast("Lỗi nhân bản công tác: " + err.message, "error");
+      }
+    }
+
+    // DELETE ACTIONS
+    let pendingDeleteType = null;
+    let pendingDeleteId = null;
+
+    function confirmDelete(type, id) {
+      pendingDeleteType = type;
+      pendingDeleteId = id;
+      
+      if (type === 'duan') {
+        document.getElementById('deleteModalTitle').textContent = "Xóa dự án";
+        document.getElementById('deleteModalMsg').textContent = "CẢNH BÁO: Xóa dự án này sẽ đồng thời xóa toàn bộ các công tác liên quan trong sơ đồ Gantt. Bạn có đồng ý xóa?";
+      } else {
+        document.getElementById('deleteModalTitle').textContent = "Xóa công tác";
+        document.getElementById('deleteModalMsg').textContent = "Bạn có chắc chắn muốn xóa công tác này?";
+      }
+
+      deleteConfirmModal.show();
+    }
+
+    document.getElementById('btnConfirmDeleteAction').addEventListener('click', async () => {
+      if (!pendingDeleteId || !pendingDeleteType) return;
+      deleteConfirmModal.hide();
+
+      try {
+        if (pendingDeleteType === 'duan') {
+          await API.delete('duan', pendingDeleteId);
+          
+          const targetProj = projects.find(p => String(p.id || p.maDA) === String(pendingDeleteId));
+          if (targetProj) {
+            const projCode = targetProj.maDA;
+            const relatedTasks = ganttTasks.filter(t => String(t.maDA).trim() === String(projCode).trim());
+            for (const t of relatedTasks) {
+              await API.delete('gantt', t.id || t.maCT);
+            }
+          }
+          showToast("Đã xóa dự án và các công tác liên quan!");
+        } else {
+          await API.delete('gantt', pendingDeleteId);
+          showToast("Đã xóa công tác thành công!");
+        }
+
+        await loadInitialData();
+      } catch (err) {
+        showToast("Lỗi khi xóa: " + err.message, "error");
+      }
+    });
+
+    // Tooltip global logic cho Gantt
+    window.showGanttTooltip = function(e, timeStr, valStr) {
+      const tooltip = document.getElementById('ganttGlobalTooltip');
+      if (!tooltip) return;
+      tooltip.innerHTML = `
+        <span class="tooltip-time">${timeStr}</span>
+        <span class="tooltip-separator"> | </span>
+        <span class="tooltip-val-label">Giá trị (đồng): </span>
+        <span class="tooltip-val">${valStr}</span>
+      `;
+      tooltip.style.display = 'block';
+      window.moveGanttTooltip(e);
+    };
+
+    window.moveGanttTooltip = function(e) {
+      const tooltip = document.getElementById('ganttGlobalTooltip');
+      if (!tooltip) return;
+      tooltip.style.left = (e.clientX + 15) + 'px';
+      tooltip.style.top = (e.clientY - 35) + 'px';
+    };
+
+    window.hideGanttTooltip = function() {
+      const tooltip = document.getElementById('ganttGlobalTooltip');
+      if (tooltip) tooltip.style.display = 'none';
+    };
+
+  </script>
+  <!-- Global tooltip container -->
+  <div id="ganttGlobalTooltip" class="gantt-global-tooltip" style="display:none; position:fixed; z-index:9999;"></div>
+</body>
+</html>

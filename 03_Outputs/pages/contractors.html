@@ -1,0 +1,989 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Danh sách Nhà thầu — CPM 5.0</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- SheetJS (XLSX) CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Shared API Helper -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal 
+                ? (isIndexPage ? "pages/login.html" : "login.html") 
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang
+    const userProfile = Auth.checkAuth(false);
+    const isManager = userProfile && (
+      userProfile.role === 'admin' || 
+      userProfile.role === 'giamdoc' || 
+      String(userProfile.chucVu).toLowerCase().includes('giám đốc') || 
+      String(userProfile.chucVu).toLowerCase().includes('admin')
+    );
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' || 
+                      window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1';
+      
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+
+      // 1. Tự động điều chỉnh link sidebar
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top';
+        }
+      });
+
+      // 2. Điền thông tin profile động vào sidebar
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+
+      // 3. Đăng ký sự kiện nút Đăng xuất
+      const btnLogout = document.getElementById('btnLogout') || document.querySelector('.btn-outline-danger');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+          e.preventDefault();
+          Auth.logout();
+        });
+      }
+    });
+  </script>
+  <?!= include('api'); ?>
+
+  <!-- Fallback local testing -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        login:  (email, password)  => apiPost({ action: 'login',  email, password })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+  
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-light);
+      overflow-x: hidden;
+    }
+
+    #sidebar {
+      width: var(--sidebar-width);
+      height: 100vh;
+      position: fixed;
+      left: 0;
+      top: 0;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-color);
+      transition: all 0.3s;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+    }
+
+    #sidebar .sidebar-header {
+      padding: 20px 24px;
+      background: var(--sidebar-bg);
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    #sidebar .nav-link {
+      color: var(--sidebar-color);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease-in-out;
+      font-weight: 500;
+    }
+
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      color: var(--sidebar-active-color) !important;
+      background: var(--sidebar-active-bg) !important;
+      border-left: 4px solid var(--primary-color);
+    }
+
+    #sidebar .nav-link i {
+      font-size: 1.1rem;
+    }
+
+    #content {
+      margin-left: var(--sidebar-width);
+      width: calc(100% - var(--sidebar-width));
+      min-height: 100vh;
+      transition: all 0.3s;
+      padding: 20px;
+    }
+
+    @media (max-width: 991.98px) {
+      #sidebar {
+        margin-left: calc(-1 * var(--sidebar-width));
+      }
+      #sidebar.active {
+        margin-left: 0;
+      }
+      #content {
+        margin-left: 0;
+        width: 100%;
+      }
+      #content.active {
+        margin-left: var(--sidebar-width);
+      }
+    }
+
+    .top-navbar {
+      background: white;
+      box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+      margin: -20px -20px 20px -20px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .contractor-card {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+  
+    /* Premium Indigo Buttons */
+    .btn-primary {
+      background: var(--primary-gradient) !important;
+      border: none !important;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+      transition: all 0.2s ease !important;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.35) !important;
+      transform: translateY(-1px);
+    }
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+    
+    /* Card headers & Table styling */
+    .card {
+      border: 1px solid var(--border-color) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02) !important;
+      overflow: hidden;
+    }
+    .table th {
+      background-color: #f8fafc !important;
+      color: #475569 !important;
+      font-weight: 600 !important;
+      font-size: 0.8rem !important;
+      text-uppercase: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+  </style>
+</head>
+<body>
+
+        <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span>CPM 5.0</span>
+      <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link ">
+        <i class="bi bi-speedometer2"></i>
+        <span>Tổng quan</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link ">
+        <i class="bi bi-briefcase"></i>
+        <span>Dự án</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link ">
+        <i class="bi bi-list-task"></i>
+        <span>Nhiệm vụ</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link ">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>Hợp đồng</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link ">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Sơ đồ Gantt</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link ">
+        <i class="bi bi-people"></i>
+        <span>Nhân viên</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link active">
+        <i class="bi bi-building"></i>
+        <span>Nhà thầu</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link ">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Tư vấn giám sát</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link ">
+        <i class="bi bi-journal-richtext"></i>
+        <span>Báo cáo ngày</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link ">
+        <i class="bi bi-calculator"></i>
+        <span>Quyết toán DAHT</span>
+      </a>
+    </div>
+
+    <!-- Hỗ trợ kỹ thuật -->
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <!-- Zalo -->
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Zalo hỗ trợ">
+            <i class="bi bi-chat-dots-fill fs-6"></i>
+          </a>
+          <!-- Gmail -->
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Gửi Email">
+            <i class="bi bi-envelope-fill fs-6"></i>
+          </a>
+          <!-- Youtube -->
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s; background-color: #ff0000 !important;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Kênh Youtube">
+            <i class="bi bi-youtube fs-6"></i>
+          </a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+
+    <!-- Profile (Footer) -->
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">
+            A
+          </div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+    
+    <!-- Top Navbar -->
+    <div class="top-navbar d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-3">
+        <button type="button" id="sidebarCollapse" class="btn btn-light d-lg-none">
+          <i class="bi bi-list fs-4"></i>
+        </button>
+        <h4 class="mb-0 fw-bold">Danh sách Nhà thầu</h4>
+      </div>
+      
+      <div class="d-flex gap-2">
+        <input type="file" id="excelFileInput" accept=".xlsx, .xls" style="display: none;">
+        <button class="btn btn-outline-primary btn-sm d-flex align-items-center gap-2" id="btnImport">
+          <i class="bi bi-file-earmark-arrow-up"></i> Nhập Excel
+        </button>
+        <button class="btn btn-success btn-sm d-flex align-items-center gap-2" id="btnExport">
+          <i class="bi bi-file-earmark-excel"></i> Xuất Excel
+        </button>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addContractorModal">
+          <i class="bi bi-plus-lg"></i> Thêm nhà thầu
+        </button>
+      </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="card border-0 shadow-sm p-3 mb-4">
+      <div class="row g-3 align-items-center">
+        <div class="col-12 col-md-4">
+          <label class="form-label small fw-bold mb-1">Tìm kiếm nhà thầu</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+            <input type="text" id="searchKeyword" class="form-control border-start-0" placeholder="Nhập mã số thuế hoặc tên nhà thầu...">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Table Card -->
+    <div class="card contractor-card border-0 shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0" id="contractorTable">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 60px;" class="ps-4">STT</th>
+                <th>Mã số Nhà thầu (MST)</th>
+                <th>Tên Nhà thầu</th>
+                <th>Địa chỉ</th>
+                <th>Đại diện</th>
+                <th style="width: 120px;" class="text-end pe-4">Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="contractorTableBody">
+              <!-- Loading state -->
+              <tr>
+                <td colspan="6" class="text-center py-5 text-muted">
+                  <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>
+                  Đang tải danh sách nhà thầu...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ADD CONTRACTOR MODAL -->
+  <div class="modal fade" id="addContractorModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-primary text-white py-3">
+          <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+            <i class="bi bi-building"></i> Thêm Nhà thầu mới
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="addContractorForm">
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Mã số Nhà thầu (Mã số thuế) <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm" name="maSoNhaThau" required placeholder="Nhập 10 số hoặc 13 số chi nhánh...">
+              <div class="form-text text-muted" style="font-size: 0.75rem;">
+                Định dạng: 10 chữ số (doanh nghiệp) hoặc 13 chữ số (chi nhánh, ví dụ: 0100109106-001).
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Tên Nhà thầu <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm" name="tenNhaThau" required placeholder="Nhập tên đầy đủ của nhà thầu...">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Địa chỉ</label>
+              <input type="text" class="form-control form-control-sm" name="diaChi" placeholder="Địa chỉ trụ sở chính...">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Đại diện pháp luật</label>
+              <input type="text" class="form-control form-control-sm" name="daiDien" placeholder="Họ tên người đại diện...">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer bg-light border-top-0">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-primary btn-sm px-4" onclick="saveContractor()">Lưu lại</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT CONTRACTOR MODAL -->
+  <div class="modal fade" id="editContractorModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-warning text-dark py-3">
+          <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+            <i class="bi bi-pencil-square"></i> Cập nhật thông tin Nhà thầu
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="editContractorForm">
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Mã số Nhà thầu (Mã số thuế)</label>
+              <input type="text" class="form-control form-control-sm bg-light" name="maSoNhaThau" readonly>
+              <div class="form-text text-muted" style="font-size: 0.75rem;">Không được thay đổi mã số thuế.</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Tên Nhà thầu <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm" name="tenNhaThau" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Địa chỉ</label>
+              <input type="text" class="form-control form-control-sm" name="diaChi">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Đại diện pháp luật</label>
+              <input type="text" class="form-control form-control-sm" name="daiDien">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer bg-light border-top-0">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-warning btn-sm px-4 text-dark fw-bold" onclick="updateContractor()">Cập nhật</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let allContractors = [];
+
+    // Khởi chạy khi tải trang
+    document.addEventListener('DOMContentLoaded', () => {
+      setupSidebar();
+      loadContractors();
+
+      // Sự kiện tìm kiếm
+      document.getElementById('searchKeyword').addEventListener('input', renderContractorsTable);
+      
+      // Sự kiện Import Excel
+      document.getElementById('btnImport').addEventListener('click', () => {
+        document.getElementById('excelFileInput').click();
+      });
+      document.getElementById('excelFileInput').addEventListener('change', handleExcelImport);
+
+      // Sự kiện Export Excel
+      document.getElementById('btnExport').addEventListener('click', exportToExcel);
+    });
+
+    // Hàm chuẩn hóa và kiểm tra MST
+    function cleanAndValidateMst(rawMst) {
+      if (!rawMst) return { valid: false, mst: "" };
+      let mst = String(rawMst).trim().replace(/\s+/g, '');
+      
+      // Tự động thêm dấu gạch ngang nếu người dùng nhập liền 13 số
+      if (/^\d{13}$/.test(mst)) {
+        mst = mst.substring(0, 10) + '-' + mst.substring(10);
+      }
+      
+      // Kiểm tra regex: 10 chữ số HOẶC 10 chữ số - 3 chữ số
+      const mstRegex = /^\d{10}$|^\d{10}-\d{3}$/;
+      return {
+        valid: mstRegex.test(mst),
+        mst: mst
+      };
+    }
+
+    // Load danh sách nhà thầu từ Google Sheets
+    async function loadContractors() {
+      const tbody = document.getElementById('contractorTableBody');
+      try {
+        allContractors = await API.list('nhathau') || [];
+        renderContractorsTable();
+      } catch (err) {
+        console.error(err);
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="text-center py-5 text-danger">
+              <i class="bi bi-exclamation-triangle me-2"></i>
+              Lỗi tải danh sách nhà thầu: ${err.message}
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    // Render bảng dữ liệu
+    function renderContractorsTable() {
+      const tbody = document.getElementById('contractorTableBody');
+      const keyword = document.getElementById('searchKeyword').value.trim().toLowerCase();
+      
+      let filtered = allContractors;
+      if (keyword) {
+        filtered = allContractors.filter(c => 
+          String(c.maSoNhaThau || "").toLowerCase().includes(keyword) ||
+          String(c.tenNhaThau || "").toLowerCase().includes(keyword) ||
+          String(c.diaChi || "").toLowerCase().includes(keyword) ||
+          String(c.daiDien || "").toLowerCase().includes(keyword)
+        );
+      }
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="text-center py-5 text-muted">
+              Không tìm thấy nhà thầu nào phù hợp
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((c, index) => {
+        // Chỉ hiển thị nút xóa nếu người dùng là Admin/Giám đốc (isManager)
+        const deleteBtn = isManager 
+          ? `<button class="btn btn-outline-danger btn-sm py-1 px-2 border-0" onclick="deleteContractor('${c.maSoNhaThau}')" title="Xóa nhà thầu">
+               <i class="bi bi-trash"></i>
+             </button>`
+          : '';
+
+        return `
+          <tr>
+            <td class="ps-4 fw-medium text-muted">${index + 1}</td>
+            <td class="fw-bold text-primary">${c.maSoNhaThau || ""}</td>
+            <td class="fw-semibold">${c.tenNhaThau || ""}</td>
+            <td>${c.diaChi || ""}</td>
+            <td>${c.daiDien || ""}</td>
+            <td class="text-end pe-4">
+              <div class="d-flex justify-content-end gap-1">
+                <button class="btn btn-outline-warning btn-sm py-1 px-2 border-0 text-dark" onclick="openEditModal('${c.maSoNhaThau}')" title="Sửa thông tin">
+                  <i class="bi bi-pencil-square"></i>
+                </button>
+                ${deleteBtn}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Save Contractor (Add new)
+    async function saveContractor() {
+      const form = document.getElementById('addContractorForm');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      // Validation
+      if (!data.maSoNhaThau || !data.tenNhaThau) {
+        alert("Vui lòng điền đầy đủ các thông tin bắt buộc!");
+        return;
+      }
+
+      // Check MST
+      const checkMst = cleanAndValidateMst(data.maSoNhaThau);
+      if (!checkMst.valid) {
+        alert("Mã số thuế nhà thầu không hợp lệ! Vui lòng nhập đúng 10 số hoặc 13 số chi nhánh (dạng 10 số liền hoặc có gạch ngang, ví dụ: 0100109106-001).");
+        return;
+      }
+      data.maSoNhaThau = checkMst.mst;
+
+      // Check trùng Mã số nhà thầu
+      const isExist = allContractors.some(c => c.maSoNhaThau === data.maSoNhaThau);
+      if (isExist) {
+        alert(`Mã số thuế ${data.maSoNhaThau} đã tồn tại trong danh sách!`);
+        return;
+      }
+
+      try {
+        await API.create('nhathau', data);
+        bootstrap.Modal.getInstance(document.getElementById('addContractorModal')).hide();
+        form.reset();
+        loadContractors();
+      } catch (err) {
+        alert("Lỗi khi thêm nhà thầu mới: " + err.message);
+      }
+    }
+
+    // Open Edit Modal and fill data
+    function openEditModal(maSoNhaThau) {
+      const c = allContractors.find(item => item.maSoNhaThau === maSoNhaThau);
+      if (!c) return;
+
+      const form = document.getElementById('editContractorForm');
+      form.reset();
+
+      form.querySelector('[name="maSoNhaThau"]').value = c.maSoNhaThau || '';
+      form.querySelector('[name="tenNhaThau"]').value = c.tenNhaThau || '';
+      form.querySelector('[name="diaChi"]').value = c.diaChi || '';
+      form.querySelector('[name="daiDien"]').value = c.daiDien || '';
+
+      const modal = new bootstrap.Modal(document.getElementById('editContractorModal'));
+      modal.show();
+    }
+
+    // Update Contractor
+    async function updateContractor() {
+      const form = document.getElementById('editContractorForm');
+      const maSoNhaThau = form.querySelector('[name="maSoNhaThau"]').value;
+      if (!maSoNhaThau) return;
+
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      if (!data.tenNhaThau) {
+        alert("Tên nhà thầu không được để trống!");
+        return;
+      }
+
+      try {
+        await API.update('nhathau', maSoNhaThau, data);
+        bootstrap.Modal.getInstance(document.getElementById('editContractorModal')).hide();
+        loadContractors();
+      } catch (err) {
+        alert("Lỗi khi cập nhật nhà thầu: " + err.message);
+      }
+    }
+
+    // Delete Contractor
+    async function deleteContractor(maSoNhaThau) {
+      if (!isManager) {
+        alert("Bạn không có quyền xóa nhà thầu! Chỉ có Giám đốc và Admin mới thực hiện được hành động này.");
+        return;
+      }
+
+      const confirmDelete = confirm(`Bạn có chắc chắn muốn xóa Nhà thầu có MST #${maSoNhaThau}? Hành động này không thể hoàn tác!`);
+      if (!confirmDelete) return;
+
+      try {
+        await API.delete('nhathau', maSoNhaThau);
+        loadContractors();
+      } catch (err) {
+        alert("Lỗi khi xóa nhà thầu: " + err.message);
+      }
+    }
+
+    // Import Excel
+    function handleExcelImport(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+          if (jsonData.length === 0) {
+            alert("File Excel trống hoặc không đúng định dạng!");
+            return;
+          }
+
+          // Tiêu đề cột tiếng Việt -> Tiêu đề key chuẩn
+          const headersMap = {
+            "Mã số Nhà thầu": "maSoNhaThau",
+            "Mã số thuế": "maSoNhaThau",
+            "MST": "maSoNhaThau",
+            "Tên Nhà thầu": "tenNhaThau",
+            "Địa chỉ": "diaChi",
+            "Đại diện": "daiDien"
+          };
+
+          const preparedList = [];
+          for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            const cleanRow = {};
+            
+            // Map tiêu đề cột
+            for (const key in row) {
+              const standardKey = headersMap[key.trim()];
+              if (standardKey) {
+                cleanRow[standardKey] = String(row[key]).trim();
+              }
+            }
+
+            // Kiểm tra MST
+            if (!cleanRow.maSoNhaThau || !cleanRow.tenNhaThau) {
+              alert(`Dòng số ${i + 2}: Thiếu thông tin Mã số nhà thầu hoặc Tên nhà thầu!`);
+              return;
+            }
+
+            const checkMst = cleanAndValidateMst(cleanRow.maSoNhaThau);
+            if (!checkMst.valid) {
+              alert(`Dòng số ${i + 2}: Mã số thuế "${cleanRow.maSoNhaThau}" không hợp lệ (Phải đúng 10 số hoặc 13 số chi nhánh)!`);
+              return;
+            }
+            cleanRow.maSoNhaThau = checkMst.mst;
+            preparedList.push(cleanRow);
+          }
+
+          // Thử chèn từng dòng vào sheet (hoặc dùng API import hàng loạt nếu Code.gs hỗ trợ)
+          let successCount = 0;
+          for (const item of preparedList) {
+            // Check trùng trước khi chèn
+            if (allContractors.some(c => c.maSoNhaThau === item.maSoNhaThau)) {
+              console.warn(`MST ${item.maSoNhaThau} đã tồn tại, tự động cập nhật hoặc bỏ qua.`);
+              // Để đơn giản và an toàn, nếu trùng thì cập nhật thông tin mới
+              await API.update('nhathau', item.maSoNhaThau, item);
+            } else {
+              await API.create('nhathau', item);
+            }
+            successCount++;
+          }
+
+          alert(`Nhập dữ liệu thành công! Đã xử lý ${successCount} nhà thầu.`);
+          loadContractors();
+        } catch (err) {
+          alert("Lỗi khi phân tích file Excel: " + err.message);
+        } finally {
+          // Reset file input
+          document.getElementById('excelFileInput').value = "";
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // Export Excel
+    function exportToExcel() {
+      if (!allContractors || allContractors.length === 0) {
+        alert("Không có dữ liệu nhà thầu để xuất!");
+        return;
+      }
+
+      const schema = {
+        "Mã số Nhà thầu": "maSoNhaThau",
+        "Tên Nhà thầu": "tenNhaThau",
+        "Địa chỉ": "diaChi",
+        "Đại diện": "daiDien"
+      };
+
+      const exportData = allContractors.map(item => {
+        const row = {};
+        for (const h in schema) {
+          const key = schema[h];
+          row[h] = item[key] !== undefined && item[key] !== null ? item[key] : "";
+        }
+        return row;
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Nhà thầu");
+      XLSX.writeFile(workbook, `CPM_Nhathau_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
+    // Sidebar toggles
+    function setupSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const toggleBtn = document.getElementById('sidebarCollapse');
+      const sidebarCollapseMobile = document.getElementById('sidebarCollapseMobile');
+
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+          sidebar.classList.toggle('active');
+        });
+      }
+      if (sidebarCollapseMobile) {
+        sidebarCollapseMobile.addEventListener('click', () => {
+          sidebar.classList.remove('active');
+        });
+      }
+    }
+  </script>
+</body>
+</html>

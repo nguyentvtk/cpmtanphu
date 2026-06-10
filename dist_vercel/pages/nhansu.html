@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản lý Nhân sự — CPM 5.0</title>
+  <!-- Bootstrap 5 & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts (Inter) -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper for both Local and GAS environments -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal 
+                ? (isIndexPage ? "pages/login.html" : "login.html") 
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang: Kiểm tra phiên đăng nhập
+    const userProfile = Auth.checkAuth(false);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' || 
+                      window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+      
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+
+      // 1. Tự động điều chỉnh link sidebar
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top'; // Quan trọng: Thoát khỏi iframe GAS
+        }
+      });
+
+      // 2. Điền thông tin profile động vào sidebar
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+
+      // 3. Đăng ký sự kiện nút Đăng xuất
+      const btnLogout = document.getElementById('btnLogout') || document.querySelector('.btn-outline-danger');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+          e.preventDefault();
+          Auth.logout();
+        });
+      }
+    });
+  </script>
+  <style>
+  /* Tự động ẩn sidebar và header khi trang ở trong iframe */
+  @media screen {
+    html.in-iframe #sidebar,
+    html.in-iframe .top-navbar,
+    body.in-iframe #sidebar,
+    body.in-iframe .top-navbar {
+      display: none !important;
+    }
+    html.in-iframe #content,
+    body.in-iframe #content {
+      margin-left: 0 !important;
+      width: 100% !important;
+      padding: 15px !important;
+      min-height: 100vh !important;
+    }
+    html.in-iframe body,
+    body.in-iframe {
+      background-color: #f8fafc !important;
+    }
+  }
+</style>
+<script>
+// Tự động phát hiện và thêm class in-iframe
+(function() {
+  const isLocal = window.location.protocol === 'file:' || 
+                  window.location.hostname === 'localhost' || 
+                  window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+  let depth = 0;
+  let current = window;
+  while (current !== window.top && current.parent !== current) {
+    depth++;
+    current = current.parent;
+    if (depth > 10) break;
+  }
+  const isInIframe = isLocal ? (depth >= 1) : (depth >= 3);
+
+  if (isInIframe) {
+    document.documentElement.classList.add('in-iframe');
+    const addClass = () => { if (document.body) document.body.classList.add('in-iframe'); };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', addClass);
+    } else {
+      addClass();
+    }
+  }
+})();
+
+// Sử dụng URL Web App được định nghĩa toàn cục từ trang chính
+// Gán thẳng vào window (không khai báo) => miễn nhiễm lỗi "already declared"
+// kể cả khi GAS nạp script này nhiều lần hoặc tồn tại file cũ khai báo trùng
+window.API_URL = window.SCRIPT_URL;
+window.CACHE_DURATION = 60000; // 60 giây
+
+async function apiPost(body) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    body: JSON.stringify(body)
+  });
+  const json = await res.json();
+  if (json.status === 'error') throw new Error(json.message);
+  return json.data;
+}
+
+function getCache(key) {
+  try {
+    const cached = sessionStorage.getItem('cpm_cache_' + key);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    const age = Date.now() - parsed.timestamp;
+    if (age < CACHE_DURATION) {
+      return parsed.data;
+    }
+  } catch(e) {}
+  return null;
+}
+
+function setCache(key, data) {
+  try {
+    const obj = {
+      timestamp: Date.now(),
+      data: data
+    };
+    sessionStorage.setItem('cpm_cache_' + key, JSON.stringify(obj));
+  } catch(e) {}
+}
+
+function clearCache(key) {
+  try {
+    sessionStorage.removeItem('cpm_cache_' + key);
+  } catch(e) {}
+}
+
+window.API = {
+  list: async (sheet, useCache = true) => {
+    if (useCache) {
+      const cached = getCache(sheet);
+      if (cached) return cached;
+    }
+    const data = await apiPost({ action: 'list', sheet });
+    if (useCache) {
+      setCache(sheet, data);
+    }
+    return data;
+  },
+  
+  batchList: async (sheets, useCache = true) => {
+    const result = {};
+    const missingSheets = [];
+    
+    if (useCache) {
+      sheets.forEach(sheet => {
+        const cached = getCache(sheet);
+        if (cached) {
+          result[sheet] = cached;
+        } else {
+          missingSheets.push(sheet);
+        }
+      });
+    } else {
+      missingSheets.push(...sheets);
+    }
+    
+    if (missingSheets.length > 0) {
+      try {
+        const batchData = await apiPost({ action: 'batch_list', sheets: missingSheets });
+        Object.keys(batchData).forEach(sheet => {
+          result[sheet] = batchData[sheet];
+          if (useCache) {
+            setCache(sheet, batchData[sheet]);
+          }
+        });
+      } catch(err) {
+        console.error("Lỗi batchList, thực hiện fallback gọi tuần tự:", err);
+        // Fallback: gọi từng sheet riêng lẻ nếu batch bị lỗi
+        for (const sheet of missingSheets) {
+          result[sheet] = await API.list(sheet, useCache);
+        }
+      }
+    }
+    
+    return result;
+  },
+
+  get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+  
+  create: async (sheet, data) => {
+    const res = await apiPost({ action: 'create', sheet, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  update: async (sheet, id, data) => {
+    const res = await apiPost({ action: 'update', sheet, id, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  delete: async (sheet, id) => {
+    const res = await apiPost({ action: 'delete', sheet, id });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  login:  (email, password)  => apiPost({ action: 'login',  email, password }),
+
+  loginTVGS: (identifier, password) => apiPost({ action: 'login_tvgs', identifier, password }),
+
+  tvgsSync: () => apiPost({ action: 'tvgs_sync' }),
+
+  tvgsCheckNow: () => apiPost({ action: 'tvgs_check_now' }),
+
+  tvgsChangePassword: (maSoDN, oldPassword, newPassword) => apiPost({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+
+  qtInit: (maDA) => apiPost({ action: 'qt_init', maDA }),
+
+  qtLoad: (maQT) => apiPost({ action: 'qt_load', maQT }),
+
+  qtDelete: (maQT) => apiPost({ action: 'qt_delete', maQT }),
+
+  clearAllCache: () => {
+    try {
+      const keys = Object.keys(sessionStorage);
+      keys.forEach(key => {
+        if (key.indexOf('cpm_cache_') === 0) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    } catch(e) {}
+  }
+};
+
+// ─── SESSION TOKEN RECOVERY ─────────────────────────────────────────────────
+// GAS đổi iframe origin mỗi lần chuyển trang → localStorage bị xóa.
+// Giải pháp: Code.gs truyền authToken qua template, trang đích đọc và khôi phục.
+if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+  try {
+    localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN)));
+  } catch(e) {}
+}
+
+// ─── AUTH & NAVIGATION ──────────────────────────────────────────────────────
+window.Auth = {
+  navigateTo: (url) => {
+    // Không tự điều hướng khi đang ở màn hình cấp quyền OAuth của Google
+    // (sandbox chặn navigation không có thao tác người dùng -> lỗi console)
+    if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+
+    const isLocal = window.location.protocol === 'file:' ||
+                    window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+                    
+    // Trên GAS: đính kèm token session vào URL để server truyền xuống trang đích
+    if (!isLocal) {
+      const profileStr = localStorage.getItem('userProfile');
+      if (profileStr && !url.includes('token=')) {
+        const token = btoa(encodeURIComponent(profileStr));
+        url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+      }
+    }
+
+    if (isLocal) {
+      window.location.href = url;
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_top';
+      if (document.body) {
+        document.body.appendChild(link);
+      } else {
+        document.documentElement.appendChild(link);
+      }
+      link.click();
+    }
+  },
+  checkAuth: (isLoginPage = false) => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+
+    const profileStr = localStorage.getItem('userProfile');
+    let profile = null;
+    try {
+      if (profileStr) profile = JSON.parse(profileStr);
+    } catch(e) {
+      localStorage.removeItem('userProfile');
+    }
+
+    if (isLoginPage) {
+      if (profile) {
+        Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+      }
+    } else {
+      if (!profile) {
+        const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                            (!window.location.pathname.includes('/pages/'));
+        Auth.navigateTo(isLocal 
+          ? (isIndexPage ? "pages/login.html" : "login.html") 
+          : SCRIPT_URL + "?page=login");
+        return null;
+      }
+      return profile;
+    }
+  },
+  logout: () => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+    localStorage.removeItem('userProfile');
+    if (isLocal) {
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+      Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+    } else {
+      Auth.navigateTo(SCRIPT_URL + "?page=login");
+    }
+  }
+};
+</script>
+
+
+  <!-- Fallback for local testing if GAS include didn't run -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        login:  (email, password)  => apiPost({ action: 'login',  email, password })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+  
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-light);
+      overflow-x: hidden;
+    }
+
+    #sidebar {
+      width: var(--sidebar-width);
+      height: 100vh;
+      position: fixed;
+      left: 0;
+      top: 0;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-color);
+      transition: all 0.3s;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+    }
+
+    #sidebar .sidebar-header {
+      padding: 20px 24px;
+      background: var(--sidebar-bg);
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    #sidebar .nav-link {
+      color: var(--sidebar-color);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease-in-out;
+      font-weight: 500;
+    }
+
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      color: var(--sidebar-active-color) !important;
+      background: var(--sidebar-active-bg) !important;
+      border-left: 4px solid var(--primary-color);
+    }
+
+    #sidebar .nav-link i {
+      font-size: 1.1rem;
+    }
+
+    #content {
+      margin-left: var(--sidebar-width);
+      width: calc(100% - var(--sidebar-width));
+      min-height: 100vh;
+      transition: all 0.3s;
+      padding: 20px;
+    }
+
+    @media (max-width: 991.98px) {
+      #sidebar {
+        margin-left: calc(-1 * var(--sidebar-width));
+      }
+      #sidebar.active {
+        margin-left: 0;
+      }
+      #content {
+        margin-left: 0;
+        width: 100%;
+      }
+      #content.active {
+        margin-left: var(--sidebar-width);
+      }
+    }
+
+    .top-navbar {
+      background: white;
+      box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+      margin: -20px -20px 20px -20px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    /* Filter Bar Styling */
+    .card-filter {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+
+    /* Avatar Dynamic Hover Frame for PC File Selection */
+    .avatar-upload-container {
+      position: relative;
+      cursor: pointer;
+      width: 110px;
+      height: 110px;
+    }
+    
+    .avatar-upload-container:hover .avatar-overlay {
+      opacity: 1 !important;
+    }
+    
+    .avatar-upload-container:hover #editAvatarPreview,
+    .avatar-upload-container:hover #addAvatarPreview {
+      filter: brightness(0.7);
+    }
+
+    /* Employee Card Custom Styles with Subtle Hover Animations */
+    .employee-card {
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+      cursor: default;
+    }
+    
+    .employee-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
+    }
+
+    .card-avatar-circle {
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background-color: var(--primary-color);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.6rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border: 3px solid white;
+    }
+  
+    /* Premium Indigo Buttons */
+    .btn-primary {
+      background: var(--primary-gradient) !important;
+      border: none !important;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+      transition: all 0.2s ease !important;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.35) !important;
+      transform: translateY(-1px);
+    }
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+    
+    /* Card headers & Table styling */
+    .card {
+      border: 1px solid var(--border-color) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02) !important;
+      overflow: hidden;
+    }
+    .table th {
+      background-color: #f8fafc !important;
+      color: #475569 !important;
+      font-weight: 600 !important;
+      font-size: 0.8rem !important;
+      text-uppercase: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+  </style>
+</head>
+<body>
+
+        <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span>CPM 5.0</span>
+      <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link ">
+        <i class="bi bi-speedometer2"></i>
+        <span>Tổng quan</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link ">
+        <i class="bi bi-briefcase"></i>
+        <span>Dự án</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link ">
+        <i class="bi bi-list-task"></i>
+        <span>Nhiệm vụ</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link ">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>Hợp đồng</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link ">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Sơ đồ Gantt</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link active">
+        <i class="bi bi-people"></i>
+        <span>Nhân viên</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link ">
+        <i class="bi bi-building"></i>
+        <span>Nhà thầu</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link ">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Tư vấn giám sát</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link ">
+        <i class="bi bi-journal-richtext"></i>
+        <span>Báo cáo ngày</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link ">
+        <i class="bi bi-calculator"></i>
+        <span>Quyết toán DAHT</span>
+      </a>
+    </div>
+
+    <!-- Hỗ trợ kỹ thuật -->
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <!-- Zalo -->
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Zalo hỗ trợ">
+            <i class="bi bi-chat-dots-fill fs-6"></i>
+          </a>
+          <!-- Gmail -->
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Gửi Email">
+            <i class="bi bi-envelope-fill fs-6"></i>
+          </a>
+          <!-- Youtube -->
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s; background-color: #ff0000 !important;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Kênh Youtube">
+            <i class="bi bi-youtube fs-6"></i>
+          </a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+
+    <!-- Profile (Footer) -->
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">
+            A
+          </div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+    
+    <!-- Top Navbar -->
+    <div class="top-navbar d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-3">
+        <button type="button" id="sidebarCollapse" class="btn btn-light d-lg-none">
+          <i class="bi bi-list fs-4"></i>
+        </button>
+        <h4 class="mb-0 fw-bold">Quản lý Nhân sự</h4>
+      </div>
+      
+      <div class="d-flex gap-2">
+        <button class="btn btn-success btn-sm d-flex align-items-center gap-2" id="btnExport">
+          <i class="bi bi-file-earmark-excel"></i> Xuất Excel
+        </button>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addEmployeeModal">
+          <i class="bi bi-plus-lg"></i> Thêm nhân viên
+        </button>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="card card-filter mb-4">
+      <div class="card-body py-3">
+        <div class="row g-3 align-items-center">
+          <div class="col-md-4">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+              <input type="text" class="form-control" id="searchKeyword" placeholder="Tìm kiếm nhân viên...">
+            </div>
+          </div>
+          <div class="col-md-3">
+            <select class="form-select form-select-sm" id="filterDepartment">
+              <option value="" selected>Tất cả các phòng ban</option>
+              <option value="Ban Giám đốc">Ban Giám đốc</option>
+              <option value="Văn phòng">Văn phòng</option>
+              <option value="Kỹ thuật - Thẩm định">Kỹ thuật - Thẩm định</option>
+              <option value="Kế toán - Tài chính">Kế toán - Tài chính</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Responsive Grid of Cards Classified by Job Title (Chức vụ) -->
+    <div class="row g-4" id="employeeCardGrid">
+      <!-- Loading State -->
+      <div class="col-12 text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2 text-muted">Đang tải danh sách nhân sự...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Add Employee Modal -->
+  <div class="modal fade" id="addEmployeeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold"><i class="bi bi-person-plus"></i> Thêm Nhân viên mới</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="addEmployeeForm">
+            
+            <!-- Dynamic Avatar Selection (Top Center) -->
+            <div class="d-flex flex-column align-items-center mb-4">
+              <div class="position-relative avatar-upload-container" onclick="document.getElementById('addAvatarInput').click()">
+                <div id="addAvatarPreview" class="rounded-circle border border-4 border-primary shadow d-flex align-items-center justify-content-center overflow-hidden" 
+                     style="width: 110px; height: 110px; background-color: var(--primary-color); color: white; font-size: 2.5rem; font-weight: 700; transition: all 0.3s;">
+                  <i class="bi bi-person"></i>
+                </div>
+                <!-- Overlay camera icon -->
+                <div class="avatar-overlay position-absolute top-0 start-0 w-100 h-100 rounded-circle d-flex align-items-center justify-content-center" 
+                     style="background: rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.3s;">
+                  <i class="bi bi-camera text-white fs-3"></i>
+                </div>
+              </div>
+              <input type="file" id="addAvatarInput" accept="image/png, image/jpeg, image/jpg, image/webp, image/gif" style="display: none;">
+              <input type="hidden" name="avatar" id="addAvatarBase64">
+              <small class="text-muted mt-2">Nhấp vào hình để chọn ảnh đại diện (PNG, JPG, WEBP, GIF)</small>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Mã nhân sự</label>
+                <input type="text" class="form-control bg-light" name="maNV" readonly required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Họ và tên</label>
+                <input type="text" class="form-control" name="hoTen" required placeholder="Nhập họ tên đầy đủ">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Email đăng nhập</label>
+                <input type="email" class="form-control" name="email" required placeholder="example@domain.com">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Mật khẩu</label>
+                <input type="password" class="form-control" name="password" required placeholder="Nhập mật khẩu">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Số điện thoại</label>
+                <input type="text" class="form-control" name="phone" placeholder="Nhập số điện thoại">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Phân quyền</label>
+                <select class="form-select" name="role" required>
+                  <option value="Admin">Admin (Toàn quyền)</option>
+                  <option value="Thành viên" selected>Thành viên (Cập nhật)</option>
+                  <option value="Người xem">Người xem (Chỉ đọc)</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Phòng ban</label>
+                <select class="form-select" name="phongBan" required>
+                  <option value="Ban Giám đốc">Ban Giám đốc</option>
+                  <option value="Văn phòng">Văn phòng</option>
+                  <option value="Kỹ thuật - Thẩm định" selected>Kỹ thuật - Thẩm định</option>
+                  <option value="Kế toán - Tài chính">Kế toán - Tài chính</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Chức vụ</label>
+                <input type="text" class="form-control" name="chucVu" required placeholder="Ví dụ: Giám đốc, Kỹ sư, Kế toán..." value="Kỹ sư">
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-primary px-4" id="btnSaveEmployee">Lưu Nhân viên</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Employee Modal -->
+  <div class="modal fade" id="editEmployeeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square"></i> Cập nhật Thông tin Nhân viên</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="editEmployeeForm">
+            
+            <!-- Dynamic Avatar Selection at the Top Center with Camera Hover -->
+            <div class="d-flex flex-column align-items-center mb-4">
+              <div class="position-relative avatar-upload-container" onclick="document.getElementById('editAvatarInput').click()">
+                <div id="editAvatarPreview" class="rounded-circle border border-4 border-primary shadow d-flex align-items-center justify-content-center overflow-hidden" 
+                     style="width: 110px; height: 110px; background-color: var(--primary-color); color: white; font-size: 2.5rem; font-weight: 700; transition: all 0.3s;">
+                  <i class="bi bi-person"></i>
+                </div>
+                <!-- Overlay camera icon on hover -->
+                <div class="avatar-overlay position-absolute top-0 start-0 w-100 h-100 rounded-circle d-flex align-items-center justify-content-center" 
+                     style="background: rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.3s;">
+                  <i class="bi bi-camera text-white fs-3"></i>
+                </div>
+              </div>
+              <input type="file" id="editAvatarInput" accept="image/png, image/jpeg, image/jpg, image/webp, image/gif" style="display: none;">
+              <input type="hidden" name="avatar" id="editAvatarBase64">
+              <small class="text-muted mt-2">Nhấp vào hình để chọn ảnh đại diện (PNG, JPG, WEBP, GIF)</small>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Mã nhân sự</label>
+                <input type="text" class="form-control bg-light" name="maNV" readonly required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Họ và tên</label>
+                <input type="text" class="form-control" name="hoTen" required placeholder="Nhập họ tên đầy đủ">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Email đăng nhập</label>
+                <input type="email" class="form-control" name="email" required placeholder="example@domain.com">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Mật khẩu (Để trống nếu giữ nguyên)</label>
+                <input type="password" class="form-control" name="password" placeholder="Mật khẩu mới">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Số điện thoại</label>
+                <input type="text" class="form-control" name="phone" placeholder="Nhập số điện thoại">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Phân quyền</label>
+                <select class="form-select" name="role" required>
+                  <option value="Admin">Admin (Toàn quyền)</option>
+                  <option value="Thành viên">Thành viên (Cập nhật)</option>
+                  <option value="Người xem">Người xem (Chỉ đọc)</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Phòng ban</label>
+                <select class="form-select" name="phongBan" required>
+                  <option value="Ban Giám đốc">Ban Giám đốc</option>
+                  <option value="Văn phòng">Văn phòng</option>
+                  <option value="Kỹ thuật - Thẩm định">Kỹ thuật - Thẩm định</option>
+                  <option value="Kế toán - Tài chính">Kế toán - Tài chính</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Chức vụ</label>
+                <input type="text" class="form-control" name="chucVu" required placeholder="Ví dụ: Giám đốc, Kỹ sư, Kế toán...">
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-primary px-4" id="btnUpdateEmployee">Cập nhật</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let employeesData = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadEmployees();
+      setupModalLoaders();
+      setupAvatarInputs();
+      
+      // Event Listeners
+      document.getElementById('btnSaveEmployee').addEventListener('click', saveEmployee);
+      document.getElementById('btnUpdateEmployee').addEventListener('click', updateEmployee);
+      document.getElementById('searchKeyword').addEventListener('input', applyFilters);
+      document.getElementById('filterDepartment').addEventListener('change', applyFilters);
+      document.getElementById('btnExport').addEventListener('click', exportToExcel);
+
+      // Mobile sidebar toggle
+      const sidebar = document.getElementById('sidebar');
+      document.getElementById('sidebarCollapse').addEventListener('click', () => {
+        sidebar.classList.toggle('active');
+      });
+      document.getElementById('sidebarCollapseMobile').addEventListener('click', () => {
+        sidebar.classList.remove('active');
+      });
+    });
+
+    async function loadEmployees() {
+      try {
+        const list = await API.list('nhansu') || [];
+        employeesData = list;
+        renderEmployees(list);
+      } catch (err) {
+        console.error("Lỗi tải nhân sự:", err);
+        document.getElementById('employeeCardGrid').innerHTML = `
+          <div class="col-12 text-center py-5 text-danger fw-bold">
+            Lỗi khi kết nối dữ liệu. Vui lòng tải lại trang hoặc kiểm tra kết nối API.
+          </div>
+        `;
+      }
+    }
+
+    // Dynamic color coding styling map based on Chức vụ (Position)
+    function getCardStyleByChucVu(chucVu) {
+      const cv = (chucVu || '').toLowerCase().trim();
+      
+      if (cv.includes('giám đốc') || cv.includes('gđ') || cv.includes('quản lý') || cv.includes('admin') || cv.includes('trưởng')) {
+        return {
+          bg: '#fffbeb', // Light Amber
+          border: '#f59e0b', // Gold / Amber border
+          badge: 'bg-warning text-dark border border-warning-subtle',
+          avatarBorder: '#f59e0b'
+        };
+      } else if (cv.includes('kỹ thuật') || cv.includes('kỹ sư') || cv.includes('kỹ thuật viên') || cv.includes('thực hiện')) {
+        return {
+          bg: '#f0f9ff', // Light Sky Blue
+          border: '#0ea5e9', // Blue border
+          badge: 'bg-info text-dark border border-info-subtle',
+          avatarBorder: '#0ea5e9'
+        };
+      } else if (cv.includes('kế toán') || cv.includes('tài chính')) {
+        return {
+          bg: '#f0fdf4', // Light Emerald Mint Green
+          border: '#10b981', // Emerald green border
+          badge: 'bg-success text-white border border-success-subtle',
+          avatarBorder: '#10b981'
+        };
+      } else if (cv.includes('văn phòng') || cv.includes('hành chính') || cv.includes('nhân viên') || cv.includes('cán bộ')) {
+        return {
+          bg: '#faf5ff', // Light Purple
+          border: '#a855f7', // Purple border
+          badge: 'bg-secondary text-white border border-secondary-subtle',
+          avatarBorder: '#a855f7'
+        };
+      } else {
+        return {
+          bg: '#f9fafb', // Modern light gray
+          border: '#d1d5db', // Soft gray border
+          badge: 'bg-light text-dark border',
+          avatarBorder: '#9ca3af'
+        };
+      }
+    }
+
+    function renderEmployees(list) {
+      const cardGrid = document.getElementById('employeeCardGrid');
+      
+      if (list.length === 0) {
+        cardGrid.innerHTML = `
+          <div class="col-12 text-center py-5 text-muted">
+            <i class="bi bi-people fs-1 d-block mb-2"></i>
+            Không tìm thấy nhân viên nào phù hợp.
+          </div>
+        `;
+        return;
+      }
+
+      cardGrid.innerHTML = list.map(item => {
+        const initial = (item.hoTen || '?').trim().charAt(0).toUpperCase();
+        const style = getCardStyleByChucVu(item.chucVu);
+        
+        return `
+          <div class="col-sm-6 col-md-4 col-lg-3">
+            <div class="card employee-card h-100 shadow-sm border-2" 
+                 style="background-color: ${style.bg}; border-color: ${style.border}; border-radius: 12px;">
+              <div class="card-body d-flex flex-column align-items-center text-center p-3 position-relative">
+                
+                <!-- Action Buttons Overlay (Top-Right) -->
+                <div class="position-absolute top-0 end-0 p-2 d-flex gap-1">
+                  <button class="btn btn-sm btn-light border-0 shadow-sm text-primary rounded-circle" 
+                          style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;"
+                          onclick="openEditModal('${item.maNV}')" title="Sửa">
+                    <i class="bi bi-pencil-square fs-6"></i>
+                  </button>
+                  <button class="btn btn-sm btn-light border-0 shadow-sm text-danger rounded-circle" 
+                          style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;"
+                          onclick="deleteEmployee('${item.maNV}', '${item.hoTen}')" title="Xóa">
+                    <i class="bi bi-trash fs-6"></i>
+                  </button>
+                </div>
+
+                <!-- Avatar Circle rendering Base64 image if available, else fallback to name initial -->
+                <div class="card-avatar-circle mb-3 overflow-hidden" 
+                     style="border-color: ${style.avatarBorder} !important; background-color: var(--primary-color);">
+                  ${item.avatar && item.avatar.trim() !== '' 
+                    ? `<img src="${item.avatar}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">` 
+                    : initial}
+                </div>
+
+                <h5 class="fw-bold mb-1 text-dark text-truncate w-100" title="${item.hoTen || ''}">${item.hoTen || '—'}</h5>
+                <span class="badge ${style.badge} mb-2 small text-truncate" style="max-width: 90%;">${item.chucVu || '—'}</span>
+                
+                <div class="w-100 border-top pt-2 my-2 text-start small text-secondary">
+                  <div class="text-truncate mb-1" title="${item.email || ''}">
+                    <i class="bi bi-envelope-fill me-2 text-muted"></i>
+                    <a href="mailto:${item.email}" class="text-decoration-none text-secondary">${item.email || '—'}</a>
+                  </div>
+                  <div class="text-truncate mb-1">
+                    <i class="bi bi-telephone-fill me-2 text-muted"></i>
+                    ${item.phone || '—'}
+                  </div>
+                  <div class="text-truncate mb-1" title="${item.phongBan || ''}">
+                    <i class="bi bi-building-fill me-2 text-muted"></i>
+                    ${item.phongBan || '—'}
+                  </div>
+                  <div class="text-truncate mb-1">
+                    <i class="bi bi-shield-fill-check me-2 text-muted"></i>
+                    Quyền: <strong>${item.role || 'Thành viên'}</strong>
+                  </div>
+                </div>
+                
+                <div class="mt-auto pt-2 w-100">
+                  <span class="text-muted" style="font-size: 0.75rem;">Mã: <code class="text-dark fw-bold">${item.maNV}</code></span>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function setupModalLoaders() {
+      const addModalEl = document.getElementById('addEmployeeModal');
+      addModalEl.addEventListener('show.bs.modal', () => {
+        // Tự sinh Mã nhân sự ngẫu nhiên
+        const randId = "NV-" + Math.floor(10000 + Math.random() * 90000);
+        document.querySelector('#addEmployeeForm [name="maNV"]').value = randId;
+        
+        // Reset Avatar preview
+        document.getElementById('addAvatarPreview').innerHTML = '<i class="bi bi-person"></i>';
+        document.getElementById('addAvatarBase64').value = '';
+        document.getElementById('addAvatarInput').value = '';
+      });
+    }
+
+    // Handler for local PC file uploads of commonly used image types
+    function setupAvatarInputs() {
+      // Add employee modal avatar
+      document.getElementById('addAvatarInput').addEventListener('change', function(e) {
+        processImageFile(e.target.files[0], 'addAvatarBase64', 'addAvatarPreview');
+      });
+
+      // Edit employee modal avatar
+      document.getElementById('editAvatarInput').addEventListener('change', function(e) {
+        processImageFile(e.target.files[0], 'editAvatarBase64', 'editAvatarPreview');
+      });
+    }
+
+    function processImageFile(file, base64InputId, previewElId) {
+      if (!file) return;
+
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+      if (!validTypes.includes(file.type)) {
+        alert("Định dạng ảnh không hợp lệ! Vui lòng chọn ảnh định dạng PNG, JPG, JPEG, WEBP hoặc GIF.");
+        return;
+      }
+
+      // Giới hạn 1.5MB để tránh dung lượng base64 quá lớn cho database cell
+      if (file.size > 1.5 * 1024 * 1024) {
+        alert("Kích thước ảnh quá lớn! Vui lòng chọn ảnh có kích thước dưới 1.5MB.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const base64 = evt.target.result;
+        document.getElementById(base64InputId).value = base64;
+        document.getElementById(previewElId).innerHTML = `<img src="${base64}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">`;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function saveEmployee() {
+      const form = document.getElementById('addEmployeeForm');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      if (!data.hoTen || !data.email || !data.password) {
+        alert("Vui lòng nhập đầy đủ các trường bắt buộc!");
+        return;
+      }
+
+      try {
+        await API.create('nhansu', data);
+        bootstrap.Modal.getInstance(document.getElementById('addEmployeeModal')).hide();
+        form.reset();
+        loadEmployees();
+      } catch (err) {
+        alert("Lỗi lưu nhân sự: " + err.message);
+      }
+    }
+
+    function openEditModal(maNV) {
+      const emp = employeesData.find(e => e.maNV === maNV);
+      if (!emp) return;
+
+      const form = document.getElementById('editEmployeeForm');
+      form.querySelector('[name="maNV"]').value = emp.maNV;
+      form.querySelector('[name="hoTen"]').value = emp.hoTen || '';
+      form.querySelector('[name="email"]').value = emp.email || '';
+      form.querySelector('[name="phone"]').value = emp.phone || '';
+      form.querySelector('[name="role"]').value = emp.role || 'Thành viên';
+      form.querySelector('[name="phongBan"]').value = emp.phongBan || 'Kỹ thuật - Thẩm định';
+      form.querySelector('[name="chucVu"]').value = emp.chucVu || '';
+      form.querySelector('[name="password"]').value = ''; // Để trống mật khẩu mới
+
+      // Populate current avatar image if it exists, else render text initial fallback
+      const previewEl = document.getElementById('editAvatarPreview');
+      const base64Input = document.getElementById('editAvatarBase64');
+      
+      if (emp.avatar && emp.avatar.trim() !== '') {
+        previewEl.innerHTML = `<img src="${emp.avatar}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">`;
+        base64Input.value = emp.avatar;
+      } else {
+        const initial = (emp.hoTen || '?').trim().charAt(0).toUpperCase();
+        previewEl.innerHTML = initial;
+        previewEl.textContent = initial;
+        base64Input.value = '';
+      }
+      
+      document.getElementById('editAvatarInput').value = ''; // Reset file input selection
+
+      const modal = new bootstrap.Modal(document.getElementById('editEmployeeModal'));
+      modal.show();
+    }
+
+    async function updateEmployee() {
+      const form = document.getElementById('editEmployeeForm');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      if (!data.hoTen || !data.email) {
+        alert("Vui lòng nhập đầy đủ Họ tên và Email!");
+        return;
+      }
+
+      // Tìm thông tin cũ để giữ nguyên mật khẩu cũ nếu mật khẩu mới trống
+      const originalEmp = employeesData.find(e => e.maNV === data.maNV);
+      if (!data.password && originalEmp) {
+        data.password = originalEmp.password;
+      }
+
+      try {
+        await API.update('nhansu', data.maNV, data);
+        
+        // Cập nhật lại sidebar profile cục bộ ngay lập tức nếu tự sửa chính tài khoản đang đăng nhập
+        if (userProfile && userProfile.maNV === data.maNV) {
+          const updatedProfile = { ...userProfile, ...data };
+          delete updatedProfile.password; // Không lưu mật khẩu vào localStorage
+          localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+          
+          // Cập nhật giao diện sidebar lập tức
+          const nameEl = document.getElementById('userName');
+          const roleEl = document.getElementById('userRole');
+          const avatarEl = document.getElementById('userAvatar');
+          if (nameEl) nameEl.textContent = updatedProfile.hoTen;
+          if (roleEl) roleEl.textContent = updatedProfile.chucVu;
+          if (avatarEl) {
+            if (updatedProfile.avatar && updatedProfile.avatar.trim() !== '') {
+              avatarEl.innerHTML = `<img src="${updatedProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+            } else {
+              avatarEl.textContent = updatedProfile.hoTen.trim().charAt(0).toUpperCase();
+            }
+          }
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('editEmployeeModal')).hide();
+        loadEmployees();
+      } catch (err) {
+        alert("Lỗi cập nhật nhân sự: " + err.message);
+      }
+    }
+
+    async function deleteEmployee(maNV, name) {
+      if (!confirm(`Bạn có chắc chắn muốn xóa nhân viên ${name} (${maNV}) không?`)) {
+        return;
+      }
+
+      try {
+        await API.delete('nhansu', maNV);
+        loadEmployees();
+      } catch (err) {
+        alert("Lỗi xóa nhân viên: " + err.message);
+      }
+    }
+
+    function applyFilters() {
+      const keyword = document.getElementById('searchKeyword').value.toLowerCase().trim();
+      const dept = document.getElementById('filterDepartment').value;
+
+      let filtered = employeesData;
+
+      if (keyword) {
+        filtered = filtered.filter(e => 
+          (e.hoTen || '').toLowerCase().includes(keyword) ||
+          (e.maNV || '').toLowerCase().includes(keyword) ||
+          (e.email || '').toLowerCase().includes(keyword) ||
+          (e.phone || '').includes(keyword)
+        );
+      }
+
+      if (dept) {
+        filtered = filtered.filter(e => e.phongBan === dept);
+      }
+
+      renderEmployees(filtered);
+    }
+
+    function exportToExcel() {
+      if (employeesData.length === 0) {
+        alert("Chưa có dữ liệu để xuất!");
+        return;
+      }
+
+      let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+      csvContent += "Mã NV,Họ và tên,Email,Số điện thoại,Phòng ban,Chức vụ,Phân quyền\n";
+
+      employeesData.forEach(e => {
+        csvContent += `"${e.maNV || ''}","${e.hoTen || ''}","${e.email || ''}","${e.phone || ''}","${e.phongBan || ''}","${e.chucVu || ''}","${e.role || ''}"\n`;
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `DANH_SACH_NHAN_SU_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>

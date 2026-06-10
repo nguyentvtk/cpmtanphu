@@ -1,0 +1,27 @@
+{
+  "_meta": {
+    "project": "CPM 5.0",
+    "version": "5.0.0",
+    "created": "2026-05-15",
+    "author": "System Pilot"
+  },
+  "spreadsheet": {
+    "id": "1LsaccoqTu3sRaElEWVdCZjXlzRL_2N2DPPP3UiInDEk",
+    "name": "CPM5.0_Database",
+    "url": "https://docs.google.com/spreadsheets/d/1LsaccoqTu3sRaElEWVdCZjXlzRL_2N2DPPP3UiInDEk/edit?usp=sharing"
+  },
+  "deployment": {
+    "web_app_url": "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec",
+    "version": "1",
+    "execute_as": "ME",
+    "access": "DOMAIN"
+  },
+  "sheets": {
+    "projects":  { "tab": "projects",  "id_column": "maDA",    "id_prefix": "PRJ" },
+    "tasks":     { "tab": "tasks",     "id_column": "maCV",    "id_prefix": "TSK" },
+    "users":     { "tab": "users",     "id_column": "maNV",    "id_prefix": "USR" },
+    "contracts": { "tab": "contracts", "id_column": "maHD",    "id_prefix": "CTR" },
+    "reports":   { "tab": "reports",   "id_column": "maBC",    "id_prefix": "RPT" },
+    "config":    { "tab": "config",    "id_column": "key",     "id_prefix": null   }
+  }
+}

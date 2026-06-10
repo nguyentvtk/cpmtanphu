@@ -1,0 +1,1791 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Danh sách Dự án — CPM 5.0</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Flatpickr CSS & JS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/vn.js"></script>
+  <!-- SheetJS (XLSX) CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Shared API Helper -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper for both Local and GAS environments -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal 
+                ? (isIndexPage ? "pages/login.html" : "login.html") 
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang: Kiểm tra phiên đăng nhập
+    const userProfile = Auth.checkAuth(false);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' || 
+                      window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+      
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+
+      // 1. Tự động điều chỉnh link sidebar
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top'; // Quan trọng: Thoát khỏi iframe GAS
+        }
+      });
+
+      // 2. Điền thông tin profile động vào sidebar
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+
+      // 3. Đăng ký sự kiện nút Đăng xuất
+      const btnLogout = document.getElementById('btnLogout') || document.querySelector('.btn-outline-danger');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+          e.preventDefault();
+          Auth.logout();
+        });
+      }
+    });
+  </script>
+  <style>
+  /* Tự động ẩn sidebar và header khi trang ở trong iframe */
+  @media screen {
+    html.in-iframe #sidebar,
+    html.in-iframe .top-navbar,
+    body.in-iframe #sidebar,
+    body.in-iframe .top-navbar {
+      display: none !important;
+    }
+    html.in-iframe #content,
+    body.in-iframe #content {
+      margin-left: 0 !important;
+      width: 100% !important;
+      padding: 15px !important;
+      min-height: 100vh !important;
+    }
+    html.in-iframe body,
+    body.in-iframe {
+      background-color: #f8fafc !important;
+    }
+  }
+</style>
+<script>
+// Tự động phát hiện và thêm class in-iframe
+(function() {
+  const isLocal = window.location.protocol === 'file:' || 
+                  window.location.hostname === 'localhost' || 
+                  window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+  let depth = 0;
+  let current = window;
+  while (current !== window.top && current.parent !== current) {
+    depth++;
+    current = current.parent;
+    if (depth > 10) break;
+  }
+  const isInIframe = isLocal ? (depth >= 1) : (depth >= 3);
+
+  if (isInIframe) {
+    document.documentElement.classList.add('in-iframe');
+    const addClass = () => { if (document.body) document.body.classList.add('in-iframe'); };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', addClass);
+    } else {
+      addClass();
+    }
+  }
+})();
+
+// Sử dụng URL Web App được định nghĩa toàn cục từ trang chính
+// Gán thẳng vào window (không khai báo) => miễn nhiễm lỗi "already declared"
+// kể cả khi GAS nạp script này nhiều lần hoặc tồn tại file cũ khai báo trùng
+window.API_URL = window.SCRIPT_URL;
+window.CACHE_DURATION = 60000; // 60 giây
+
+async function apiPost(body) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    body: JSON.stringify(body)
+  });
+  const json = await res.json();
+  if (json.status === 'error') throw new Error(json.message);
+  return json.data;
+}
+
+function getCache(key) {
+  try {
+    const cached = sessionStorage.getItem('cpm_cache_' + key);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    const age = Date.now() - parsed.timestamp;
+    if (age < CACHE_DURATION) {
+      return parsed.data;
+    }
+  } catch(e) {}
+  return null;
+}
+
+function setCache(key, data) {
+  try {
+    const obj = {
+      timestamp: Date.now(),
+      data: data
+    };
+    sessionStorage.setItem('cpm_cache_' + key, JSON.stringify(obj));
+  } catch(e) {}
+}
+
+function clearCache(key) {
+  try {
+    sessionStorage.removeItem('cpm_cache_' + key);
+  } catch(e) {}
+}
+
+window.API = {
+  list: async (sheet, useCache = true) => {
+    if (useCache) {
+      const cached = getCache(sheet);
+      if (cached) return cached;
+    }
+    const data = await apiPost({ action: 'list', sheet });
+    if (useCache) {
+      setCache(sheet, data);
+    }
+    return data;
+  },
+  
+  batchList: async (sheets, useCache = true) => {
+    const result = {};
+    const missingSheets = [];
+    
+    if (useCache) {
+      sheets.forEach(sheet => {
+        const cached = getCache(sheet);
+        if (cached) {
+          result[sheet] = cached;
+        } else {
+          missingSheets.push(sheet);
+        }
+      });
+    } else {
+      missingSheets.push(...sheets);
+    }
+    
+    if (missingSheets.length > 0) {
+      try {
+        const batchData = await apiPost({ action: 'batch_list', sheets: missingSheets });
+        Object.keys(batchData).forEach(sheet => {
+          result[sheet] = batchData[sheet];
+          if (useCache) {
+            setCache(sheet, batchData[sheet]);
+          }
+        });
+      } catch(err) {
+        console.error("Lỗi batchList, thực hiện fallback gọi tuần tự:", err);
+        // Fallback: gọi từng sheet riêng lẻ nếu batch bị lỗi
+        for (const sheet of missingSheets) {
+          result[sheet] = await API.list(sheet, useCache);
+        }
+      }
+    }
+    
+    return result;
+  },
+
+  get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+  
+  create: async (sheet, data) => {
+    const res = await apiPost({ action: 'create', sheet, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  update: async (sheet, id, data) => {
+    const res = await apiPost({ action: 'update', sheet, id, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  delete: async (sheet, id) => {
+    const res = await apiPost({ action: 'delete', sheet, id });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  login:  (email, password)  => apiPost({ action: 'login',  email, password }),
+
+  loginTVGS: (identifier, password) => apiPost({ action: 'login_tvgs', identifier, password }),
+
+  tvgsSync: () => apiPost({ action: 'tvgs_sync' }),
+
+  tvgsCheckNow: () => apiPost({ action: 'tvgs_check_now' }),
+
+  tvgsChangePassword: (maSoDN, oldPassword, newPassword) => apiPost({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+
+  qtInit: (maDA) => apiPost({ action: 'qt_init', maDA }),
+
+  qtLoad: (maQT) => apiPost({ action: 'qt_load', maQT }),
+
+  qtDelete: (maQT) => apiPost({ action: 'qt_delete', maQT }),
+
+  clearAllCache: () => {
+    try {
+      const keys = Object.keys(sessionStorage);
+      keys.forEach(key => {
+        if (key.indexOf('cpm_cache_') === 0) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    } catch(e) {}
+  }
+};
+
+// ─── SESSION TOKEN RECOVERY ─────────────────────────────────────────────────
+// GAS đổi iframe origin mỗi lần chuyển trang → localStorage bị xóa.
+// Giải pháp: Code.gs truyền authToken qua template, trang đích đọc và khôi phục.
+if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+  try {
+    localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN)));
+  } catch(e) {}
+}
+
+// ─── AUTH & NAVIGATION ──────────────────────────────────────────────────────
+window.Auth = {
+  navigateTo: (url) => {
+    // Không tự điều hướng khi đang ở màn hình cấp quyền OAuth của Google
+    // (sandbox chặn navigation không có thao tác người dùng -> lỗi console)
+    if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+
+    const isLocal = window.location.protocol === 'file:' ||
+                    window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+                    
+    // Trên GAS: đính kèm token session vào URL để server truyền xuống trang đích
+    if (!isLocal) {
+      const profileStr = localStorage.getItem('userProfile');
+      if (profileStr && !url.includes('token=')) {
+        const token = btoa(encodeURIComponent(profileStr));
+        url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+      }
+    }
+
+    if (isLocal) {
+      window.location.href = url;
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_top';
+      if (document.body) {
+        document.body.appendChild(link);
+      } else {
+        document.documentElement.appendChild(link);
+      }
+      link.click();
+    }
+  },
+  checkAuth: (isLoginPage = false) => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+
+    const profileStr = localStorage.getItem('userProfile');
+    let profile = null;
+    try {
+      if (profileStr) profile = JSON.parse(profileStr);
+    } catch(e) {
+      localStorage.removeItem('userProfile');
+    }
+
+    if (isLoginPage) {
+      if (profile) {
+        Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+      }
+    } else {
+      if (!profile) {
+        const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                            (!window.location.pathname.includes('/pages/'));
+        Auth.navigateTo(isLocal 
+          ? (isIndexPage ? "pages/login.html" : "login.html") 
+          : SCRIPT_URL + "?page=login");
+        return null;
+      }
+      return profile;
+    }
+  },
+  logout: () => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+    localStorage.removeItem('userProfile');
+    if (isLocal) {
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+      Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+    } else {
+      Auth.navigateTo(SCRIPT_URL + "?page=login");
+    }
+  }
+};
+</script>
+
+
+  <!-- Fallback for local testing if GAS include didn't run -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        login:  (email, password)  => apiPost({ action: 'login',  email, password })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+  
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-light);
+      overflow-x: hidden;
+    }
+
+    #sidebar {
+      width: var(--sidebar-width);
+      height: 100vh;
+      position: fixed;
+      left: 0;
+      top: 0;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-color);
+      transition: all 0.3s;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+    }
+
+    #sidebar .sidebar-header {
+      padding: 20px 24px;
+      background: var(--sidebar-bg);
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    #sidebar .nav-link {
+      color: var(--sidebar-color);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease-in-out;
+      font-weight: 500;
+    }
+
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      color: var(--sidebar-active-color) !important;
+      background: var(--sidebar-active-bg) !important;
+      border-left: 4px solid var(--primary-color);
+    }
+
+    #sidebar .nav-link i {
+      font-size: 1.1rem;
+    }
+
+    #content {
+      margin-left: var(--sidebar-width);
+      width: calc(100% - var(--sidebar-width));
+      min-height: 100vh;
+      transition: all 0.3s;
+      padding: 20px;
+    }
+
+    @media (max-width: 991.98px) {
+      #sidebar {
+        margin-left: calc(-1 * var(--sidebar-width));
+      }
+      #sidebar.active {
+        margin-left: 0;
+      }
+      #content {
+        margin-left: 0;
+        width: 100%;
+      }
+      #content.active {
+        margin-left: var(--sidebar-width);
+      }
+    }
+
+    .top-navbar {
+      background: white;
+      box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+      margin: -20px -20px 20px -20px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    /* Project Card Styles */
+    .project-card {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      transition: transform 0.2s, box-shadow 0.2s;
+      height: 100%;
+    }
+    .project-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    }
+    .project-card .card-body {
+      padding: 1.5rem;
+    }
+    .progress {
+      height: 8px;
+      border-radius: 4px;
+    }
+    .badge-year {
+      background: #e2e8f0;
+      color: #475569;
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+
+    .project-card.card-bg-0 { background-color: #f8fafc !important; border-left: 4px solid #64748b !important; } /* Slate */
+    .project-card.card-bg-1 { background-color: #eef2ff !important; border-left: 4px solid #4f46e5 !important; } /* Indigo */
+    .project-card.card-bg-2 { background-color: #f0fdf4 !important; border-left: 4px solid #16a34a !important; } /* Green */
+    .project-card.card-bg-3 { background-color: #fffbeb !important; border-left: 4px solid #d97706 !important; } /* Amber */
+    .project-card.card-bg-4 { background-color: #fff1f2 !important; border-left: 4px solid #db2777 !important; } /* Rose */
+    .project-card.card-bg-5 { background-color: #f0fdfa !important; border-left: 4px solid #0d9488 !important; } /* Teal */
+    .project-card.card-bg-6 { background-color: #ecfeff !important; border-left: 4px solid #0891b2 !important; } /* Cyan */
+    .project-card.card-bg-7 { background-color: #fff7ed !important; border-left: 4px solid #ea580c !important; } /* Orange */
+  
+    /* Premium Indigo Buttons */
+    .btn-primary {
+      background: var(--primary-gradient) !important;
+      border: none !important;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+      transition: all 0.2s ease !important;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.35) !important;
+      transform: translateY(-1px);
+    }
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+    
+    /* Card headers & Table styling */
+    .card {
+      border: 1px solid var(--border-color) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02) !important;
+      overflow: hidden;
+    }
+    .table th {
+      background-color: #f8fafc !important;
+      color: #475569 !important;
+      font-weight: 600 !important;
+      font-size: 0.8rem !important;
+      text-uppercase: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+  </style>
+</head>
+<body>
+
+        <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span>CPM 5.0</span>
+      <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link ">
+        <i class="bi bi-speedometer2"></i>
+        <span>Tổng quan</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link active">
+        <i class="bi bi-briefcase"></i>
+        <span>Dự án</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link ">
+        <i class="bi bi-list-task"></i>
+        <span>Nhiệm vụ</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link ">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>Hợp đồng</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link ">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Sơ đồ Gantt</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link ">
+        <i class="bi bi-people"></i>
+        <span>Nhân viên</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link ">
+        <i class="bi bi-building"></i>
+        <span>Nhà thầu</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link ">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Tư vấn giám sát</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link ">
+        <i class="bi bi-journal-richtext"></i>
+        <span>Báo cáo ngày</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link ">
+        <i class="bi bi-calculator"></i>
+        <span>Quyết toán DAHT</span>
+      </a>
+    </div>
+
+    <!-- Hỗ trợ kỹ thuật -->
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <!-- Zalo -->
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Zalo hỗ trợ">
+            <i class="bi bi-chat-dots-fill fs-6"></i>
+          </a>
+          <!-- Gmail -->
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Gửi Email">
+            <i class="bi bi-envelope-fill fs-6"></i>
+          </a>
+          <!-- Youtube -->
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s; background-color: #ff0000 !important;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Kênh Youtube">
+            <i class="bi bi-youtube fs-6"></i>
+          </a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+
+    <!-- Profile (Footer) -->
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">
+            A
+          </div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+    
+    <!-- Top Navbar -->
+    <div class="top-navbar d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-3">
+        <button type="button" id="sidebarCollapse" class="btn btn-light d-lg-none">
+          <i class="bi bi-list fs-4"></i>
+        </button>
+        <h4 class="mb-0 fw-bold">Danh sách Dự án</h4>
+      </div>
+      
+      <div class="d-flex gap-2">
+        <button class="btn btn-success btn-sm d-flex align-items-center gap-2" id="btnExport">
+          <i class="bi bi-file-earmark-excel"></i> Xuất Excel
+        </button>
+        <button class="btn btn-primary btn-sm d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addProjectModal">
+          <i class="bi bi-plus-lg"></i> Thêm dự án
+        </button>
+      </div>
+    </div>
+
+    <!-- Project Cards Grid -->
+    <div class="row g-4" id="projectGrid">
+      <!-- Loading State -->
+      <div class="col-12 text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2 text-muted">Đang tải danh sách dự án...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Add Project Modal -->
+  <!-- ADD PROJECT MODAL -->
+  <div class="modal fade" id="addProjectModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-primary text-white py-3">
+          <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+            <i class="bi bi-briefcase-fill"></i> Thêm Dự án mới
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <!-- Modal Tab Navigation -->
+          <ul class="nav nav-tabs bg-light px-3 pt-2" id="addProjTabs" role="tablist">
+            <li class="nav-item">
+              <button class="nav-link active fw-semibold" id="add-general-tab" data-bs-toggle="tab" data-bs-target="#add-general" type="button">
+                Thông tin chung
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link fw-semibold" id="add-finance-tab" data-bs-toggle="tab" data-bs-target="#add-finance" type="button">
+                Tài chính & Nguồn vốn
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link fw-semibold" id="add-files-tab" data-bs-toggle="tab" data-bs-target="#add-files" type="button">
+                Tài liệu đính kèm
+              </button>
+            </li>
+          </ul>
+          
+          <form id="addProjectForm" class="p-4">
+            <div class="tab-content">
+              <!-- Tab 1: General Info -->
+              <div class="tab-pane fade show active" id="add-general">
+                <div class="row g-3">
+                  <div class="col-md-4">
+                    <label class="form-label small fw-bold">Mã DA (7 số)</label>
+                    <input type="text" class="form-control" name="maDA" maxlength="7" placeholder="VD: 8179901" required>
+                  </div>
+                  <div class="col-md-8">
+                    <label class="form-label small fw-bold">Tên dự án</label>
+                    <input type="text" class="form-control" name="tenDA" placeholder="Nhập tên dự án..." required>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Phụ trách kỹ thuật</label>
+                    <input type="text" class="form-control" name="phuTrachKT" placeholder="Họ và tên...">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Phụ trách kế toán</label>
+                    <input type="text" class="form-control" name="phuTrachKeToan" placeholder="Họ và tên...">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label small fw-bold">Năm thực hiện</label>
+                    <input type="number" class="form-control" name="namThucHien" value="2026">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label small fw-bold">Ngày bắt đầu</label>
+                    <input type="text" class="form-control datepicker" name="ngayBatDau" placeholder="Chọn ngày...">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label small fw-bold">Ngày kết thúc</label>
+                    <input type="text" class="form-control datepicker" name="ngayKetThuc" placeholder="Chọn ngày...">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Trạng thái dự án</label>
+                    <select class="form-select" name="trangThai" required>
+                      <option value="Chưa triển khai" selected>Chưa triển khai</option>
+                      <option value="Đang thực hiện">Đang thực hiện</option>
+                      <option value="Tạm ngưng">Tạm ngưng</option>
+                      <option value="Hoàn thành">Hoàn thành</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Loại Dự án</label>
+                    <input type="text" class="form-control" name="loaiDA" placeholder="VD: Giao thông, Dân dụng...">
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small fw-bold">Mô tả dự án</label>
+                    <textarea class="form-control" name="moTa" rows="3" placeholder="Nhập mô tả dự án..."></textarea>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small fw-bold">Ghi chú</label>
+                    <input type="text" class="form-control" name="ghiChu" placeholder="Nhập ghi chú (nếu có)...">
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Tab 2: Finance -->
+              <div class="tab-pane fade" id="add-finance">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold text-primary">Tổng mức đầu tư (đ)</label>
+                    <input type="text" class="form-control fw-semibold currency-input" name="tongMucDauTu" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold text-success">Tổng GT Quyết toán (đ)</label>
+                    <input type="text" class="form-control fw-semibold currency-input" name="tongGTQuyetToan" value="0">
+                  </div>
+                  
+                  <div class="col-12 border-top pt-3 mt-4">
+                    <h6 class="fw-bold text-muted mb-3">CHI TIẾT CÁC NGUỒN VỐN CẤP</h6>
+                  </div>
+                  
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Nguồn Chuẩn bị đầu tư (đ)</label>
+                    <input type="text" class="form-control calc-source currency-input" name="nguonCBDT" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Nguồn NS tập trung (đ)</label>
+                    <input type="text" class="form-control calc-source currency-input" name="nguonNSTT" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Nguồn thu tiền SDĐ (đ)</label>
+                    <input type="text" class="form-control calc-source currency-input" name="nguonThuSDD" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Nguồn tăng thu tiền SDĐ tỉnh bổ sung (đ)</label>
+                    <input type="text" class="form-control calc-source currency-input" name="nguonTangThuSDD" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Vốn tỉnh (XSKT) (đ)</label>
+                    <input type="text" class="form-control calc-source currency-input" name="vonTinhXSKT" value="0">
+                  </div>
+                  
+                  <div class="col-md-6 bg-light p-3 rounded border">
+                    <label class="form-label small fw-bold text-dark-emphasis">TỔNG NGUỒN VỐN CẤP (đ)</label>
+                    <input type="text" class="form-control form-control-lg bg-white fw-bold text-primary" id="addTotalCapital" value="0" readonly>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Tab 3: Files -->
+              <div class="tab-pane fade" id="add-files">
+                <div class="p-3 bg-light rounded border mb-3">
+                  <label class="form-label fw-bold small">Đính kèm tài liệu dự án</label>
+                  <p class="text-muted small mb-3">
+                    Đính kèm các file QĐ phê duyệt Chủ trương đầu tư, QĐ phê duyệt dự án, QĐ phê duyệt KHLCNT... Hệ thống tự tạo thư mục Drive dự án để lưu.
+                  </p>
+                  <input type="file" class="form-control" id="addFileInput" multiple>
+                  <div class="d-none mt-2 align-items-center gap-2 text-primary" id="addFileUploadStatus">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span class="small fw-semibold">Đang tải file lên Drive dự án...</span>
+                  </div>
+                </div>
+                
+                <h6 class="fw-bold text-muted mb-2">Danh sách tài liệu đính kèm:</h6>
+                <div id="addFilesList" class="d-flex flex-column gap-2">
+                  <div class="text-muted small py-2 text-center border rounded border-dashed">Chưa có tài liệu đính kèm.</div>
+                </div>
+                <!-- Hidden input to store file links separated by newline -->
+                <input type="hidden" name="file" id="addFilesHidden">
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer bg-light py-3">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-primary px-4" id="btnSaveProject">Lưu dự án</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT PROJECT MODAL -->
+  <div class="modal fade" id="editProjectModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header text-white py-3" style="background: var(--primary-gradient);">
+          <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+            <i class="bi bi-pencil-square"></i> Cập nhật Dự án
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <!-- Modal Tab Navigation -->
+          <ul class="nav nav-tabs bg-light px-3 pt-2" id="editProjTabs" role="tablist">
+            <li class="nav-item">
+              <button class="nav-link active fw-semibold" id="edit-general-tab" data-bs-toggle="tab" data-bs-target="#edit-general" type="button">
+                Thông tin chung
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link fw-semibold" id="edit-finance-tab" data-bs-toggle="tab" data-bs-target="#edit-finance" type="button">
+                Tài chính & Nguồn vốn
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link fw-semibold" id="edit-files-tab" data-bs-toggle="tab" data-bs-target="#edit-files" type="button">
+                Tài liệu đính kèm
+              </button>
+            </li>
+          </ul>
+          
+          <form id="editProjectForm" class="p-4">
+            <div class="tab-content">
+              <!-- Tab 1: General Info -->
+              <div class="tab-pane fade show active" id="edit-general">
+                <div class="row g-3">
+                  <div class="col-md-4">
+                    <label class="form-label small fw-bold">Mã DA (Không thể sửa)</label>
+                    <input type="text" class="form-control bg-light fw-bold text-dark" name="maDA" readonly>
+                  </div>
+                  <div class="col-md-8">
+                    <label class="form-label small fw-bold">Tên dự án</label>
+                    <input type="text" class="form-control" name="tenDA" required>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Phụ trách kỹ thuật</label>
+                    <input type="text" class="form-control" name="phuTrachKT">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Phụ trách kế toán</label>
+                    <input type="text" class="form-control" name="phuTrachKeToan">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label small fw-bold">Năm thực hiện</label>
+                    <input type="number" class="form-control" name="namThucHien">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label small fw-bold">Ngày bắt đầu</label>
+                    <input type="text" class="form-control datepicker" name="ngayBatDau" placeholder="Chọn ngày...">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label small fw-bold">Ngày kết thúc</label>
+                    <input type="text" class="form-control datepicker" name="ngayKetThuc" placeholder="Chọn ngày...">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Trạng thái dự án</label>
+                    <select class="form-select" name="trangThai" required>
+                      <option value="Chưa triển khai">Chưa triển khai</option>
+                      <option value="Đang thực hiện">Đang thực hiện</option>
+                      <option value="Tạm ngưng">Tạm ngưng</option>
+                      <option value="Hoàn thành">Hoàn thành</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Loại Dự án</label>
+                    <input type="text" class="form-control" name="loaiDA">
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small fw-bold">Mô tả dự án</label>
+                    <textarea class="form-control" name="moTa" rows="3"></textarea>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label small fw-bold">Ghi chú</label>
+                    <input type="text" class="form-control" name="ghiChu">
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Tab 2: Finance -->
+              <div class="tab-pane fade" id="edit-finance">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold text-primary">Tổng mức đầu tư (đ)</label>
+                    <input type="text" class="form-control fw-semibold currency-input" name="tongMucDauTu">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold text-success">Tổng GT Quyết toán (đ)</label>
+                    <input type="text" class="form-control fw-semibold currency-input" name="tongGTQuyetToan">
+                  </div>
+                  
+                  <div class="col-12 border-top pt-3 mt-4">
+                    <h6 class="fw-bold text-muted mb-3">CHI TIẾT CÁC NGUỒN VỐN CẤP</h6>
+                  </div>
+                  
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Nguồn Chuẩn bị đầu tư (đ)</label>
+                    <input type="text" class="form-control edit-calc-source currency-input" name="nguonCBDT" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Nguồn NS tập trung (đ)</label>
+                    <input type="text" class="form-control edit-calc-source currency-input" name="nguonNSTT" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Nguồn thu tiền SDĐ (đ)</label>
+                    <input type="text" class="form-control edit-calc-source currency-input" name="nguonThuSDD" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Nguồn tăng thu tiền SDĐ tỉnh bổ sung (đ)</label>
+                    <input type="text" class="form-control edit-calc-source currency-input" name="nguonTangThuSDD" value="0">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label small fw-bold">Vốn tỉnh (XSKT) (đ)</label>
+                    <input type="text" class="form-control edit-calc-source currency-input" name="vonTinhXSKT" value="0">
+                  </div>
+                  
+                  <div class="col-md-6 bg-light p-3 rounded border">
+                    <label class="form-label small fw-bold text-dark-emphasis">TỔNG NGUỒN VỐN CẤP (đ)</label>
+                    <input type="text" class="form-control form-control-lg bg-white fw-bold text-primary" id="editTotalCapital" value="0" readonly>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Tab 3: Files -->
+              <div class="tab-pane fade" id="edit-files">
+                <div class="p-3 bg-light rounded border mb-3">
+                  <label class="form-label fw-bold small">Tải lên tài liệu đính kèm mới</label>
+                  <input type="file" class="form-control" id="editFileInput" multiple>
+                  <div class="d-none mt-2 align-items-center gap-2 text-primary" id="editFileUploadStatus">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span class="small fw-semibold">Đang tải file lên Drive dự án...</span>
+                  </div>
+                </div>
+                
+                <h6 class="fw-bold text-muted mb-2">Danh sách tài liệu đính kèm hiện tại:</h6>
+                <div id="editFilesList" class="d-flex flex-column gap-2">
+                  <div class="text-muted small py-2 text-center border border-dashed rounded">Chưa có tài liệu đính kèm.</div>
+                </div>
+                <!-- Hidden input to store file links separated by newline -->
+                <input type="hidden" name="file" id="editFilesHidden">
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer bg-light py-3">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-primary px-4" id="btnUpdateProject">Cập nhật dự án</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // State variables
+    let allProjectsList = [];
+    let addFilesList = [];
+    let editFilesList = [];
+
+    // Hàm an toàn gán trị ngày tháng cho datepicker (Flatpickr)
+    function setDateInputValue(el, value) {
+      if (typeof el === 'string') el = document.querySelector(el);
+      if (el) {
+        if (el._flatpickr) {
+          el._flatpickr.setDate(value || '', true);
+        } else {
+          el.value = value || '';
+        }
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Khởi tạo Flatpickr cho các datepicker
+      flatpickr(".datepicker", {
+        locale: "vn",
+        altInput: true,
+        altFormat: "d/m/Y",
+        dateFormat: "Y-m-d",
+        allowInput: true
+      });
+
+      setupSidebar();
+      
+      // PHÂN QUYỀN: Ẩn nút Thêm dự án đối với Nhân viên thường
+      const isManager = userProfile && (
+        (userProfile.role && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.role)) ||
+        (userProfile.chucVu && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.chucVu))
+      );
+      if (!isManager) {
+        const btnAdd = document.querySelector('[data-bs-target="#addProjectModal"]');
+        if (btnAdd) btnAdd.style.display = 'none';
+      }
+
+      loadProjects();
+      initCurrencyInputs();
+      
+      // Events for Add Project
+      document.getElementById('btnSaveProject').addEventListener('click', saveProject);
+      document.getElementById('btnExport').addEventListener('click', exportToExcel);
+      
+      // Auto-summing capital sources
+      document.querySelectorAll('.calc-source').forEach(input => {
+        input.addEventListener('input', calculateAddTotalCapital);
+      });
+      document.querySelectorAll('.edit-calc-source').forEach(input => {
+        input.addEventListener('input', calculateEditTotalCapital);
+      });
+
+      // File upload events
+      document.getElementById('addFileInput').addEventListener('change', (e) => handleFileUpload(e, 'add'));
+      document.getElementById('editFileInput').addEventListener('change', (e) => handleFileUpload(e, 'edit'));
+
+      // Event for Update Project button
+      document.getElementById('btnUpdateProject').addEventListener('click', updateProject);
+    });
+
+    // Helper: format currency
+    function formatVND(value) {
+      return Number(value || 0).toLocaleString('vi-VN') + ' đ';
+    }
+
+    // Helper: parse currency string to raw number
+    function parseCurrencyString(str) {
+      if (!str) return 0;
+      const clean = String(str).replace(/\D/g, '');
+      return clean ? Number(clean) : 0;
+    }
+
+    // Helper: format currency string for display
+    function formatCurrencyString(val) {
+      if (val === undefined || val === null || val === '') return '0 đ';
+      const clean = String(val).replace(/\D/g, '');
+      if (!clean) return '0 đ';
+      return Number(clean).toLocaleString('vi-VN') + ' đ';
+    }
+
+    // Auto calculate capital for Add Modal
+    function calculateAddTotalCapital() {
+      let total = 0;
+      document.querySelectorAll('.calc-source').forEach(input => {
+        total += parseCurrencyString(input.value);
+      });
+      document.getElementById('addTotalCapital').value = formatVND(total);
+    }
+
+    // Auto calculate capital for Edit Modal
+    function calculateEditTotalCapital() {
+      let total = 0;
+      document.querySelectorAll('.edit-calc-source').forEach(input => {
+        total += parseCurrencyString(input.value);
+      });
+      document.getElementById('editTotalCapital').value = formatVND(total);
+    }
+
+    // Format all currency inputs in a form
+    function formatAllCurrencyInputsInForm(form) {
+      form.querySelectorAll('.currency-input').forEach(input => {
+        input.value = formatCurrencyString(input.value);
+      });
+    }
+
+    // Initialize currency input events for real-time formatting
+    function initCurrencyInputs() {
+      document.querySelectorAll('.currency-input').forEach(input => {
+        // Initial formatting
+        input.value = formatCurrencyString(input.value);
+
+        input.addEventListener('input', function(e) {
+          let value = this.value;
+          let clean = value.replace(/\D/g, '');
+          let numVal = clean ? parseInt(clean, 10) : 0;
+          
+          let selectionStart = this.selectionStart;
+          let oldLen = value.length;
+          
+          let formatted = numVal.toLocaleString('vi-VN') + ' đ';
+          this.value = formatted;
+          
+          let newLen = formatted.length;
+          let offset = newLen - oldLen;
+          let newCursor = selectionStart + offset;
+          
+          if (newCursor > newLen - 2) {
+            newCursor = newLen - 2;
+          }
+          if (newCursor < 0) {
+            newCursor = 0;
+          }
+          
+          this.setSelectionRange(newCursor, newCursor);
+        });
+
+        input.addEventListener('keydown', function(e) {
+          let val = this.value;
+          let cursor = this.selectionStart;
+          
+          if (e.key === 'Backspace' && cursor >= val.length - 2) {
+            e.preventDefault();
+            let clean = val.slice(0, val.length - 2).replace(/\D/g, '');
+            if (clean.length > 0) {
+              let newVal = clean.slice(0, -1);
+              let numVal = newVal ? parseInt(newVal, 10) : 0;
+              this.value = numVal.toLocaleString('vi-VN') + ' đ';
+              let pos = this.value.length - 2;
+              this.setSelectionRange(pos, pos);
+              this.dispatchEvent(new Event('input'));
+            }
+          }
+        });
+
+        input.addEventListener('focus', function() {
+          let val = this.value;
+          let numberPartLength = val.length - 2;
+          if (numberPartLength > 0) {
+            setTimeout(() => {
+              this.setSelectionRange(0, numberPartLength);
+            }, 0);
+          }
+        });
+      });
+    }
+
+    // Core Project Loader
+    async function loadProjects() {
+      const grid = document.getElementById('projectGrid');
+      grid.innerHTML = `
+        <div class="col-12 text-center py-5">
+          <div class="spinner-border text-primary" role="status"></div>
+          <p class="text-muted mt-2">Đang tải danh sách dự án...</p>
+        </div>
+      `;
+      try {
+        let projects = await API.list('duan') || [];
+        
+        // PHÂN QUYỀN: Kiểm tra vai trò của người dùng
+        const isManager = userProfile && (
+          (userProfile.role && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.role)) ||
+          (userProfile.chucVu && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.chucVu))
+        );
+
+        if (!isManager && userProfile && userProfile.hoTen) {
+          const hoTenClean = userProfile.hoTen.trim().toLowerCase();
+          projects = projects.filter(p => {
+            const phuTrachKT = String(p.phuTrachKT || '').trim().toLowerCase();
+            const phuTrachKeToan = String(p.phuTrachKeToan || '').trim().toLowerCase();
+            return phuTrachKT.includes(hoTenClean) || phuTrachKeToan.includes(hoTenClean) || hoTenClean.includes(phuTrachKT) || hoTenClean.includes(phuTrachKeToan);
+          });
+        }
+        
+        allProjectsList = projects; // Save to global state
+        
+        if (projects.length === 0) {
+          grid.innerHTML = '<div class="col-12 text-center text-muted py-5">Chưa có dự án nào.</div>';
+          return;
+        }
+
+        grid.innerHTML = projects.map((p, index) => {
+          const status = p.trangThai || 'Chưa triển khai';
+          let statusBadgeClass = 'bg-secondary-subtle text-secondary border border-secondary-subtle';
+          
+          if (status === 'Đang thực hiện' || status === 'Đang triển khai') {
+            statusBadgeClass = 'bg-primary-subtle text-primary border border-primary-subtle';
+          } else if (status === 'Tạm ngưng' || status === 'Tạm hoãn') {
+            statusBadgeClass = 'bg-warning-subtle text-warning border border-warning-subtle';
+          } else if (status === 'Chưa triển khai') {
+            statusBadgeClass = 'bg-danger-subtle text-danger border border-danger-subtle';
+          } else if (status === 'Hoàn thành' || status === 'Đã xong') {
+            statusBadgeClass = 'bg-success-subtle text-success border border-success-subtle';
+          }
+
+          const cardBgClass = `card-bg-${index % 8}`;
+
+          // Chỉ hiển thị nút sửa/xóa nếu là quản lý
+          const actionButtons = isManager ? `
+            <div class="d-flex gap-2">
+              <button class="btn btn-outline-primary btn-sm p-1 rounded-2 btn-edit-proj" data-id="${p.maDA}" title="Sửa dự án" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-pencil-fill" style="font-size: 0.8rem;"></i>
+              </button>
+              <button class="btn btn-outline-danger btn-sm p-1 rounded-2 btn-delete-proj" data-id="${p.maDA}" title="Xóa dự án" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-trash3-fill" style="font-size: 0.8rem;"></i>
+              </button>
+            </div>
+          ` : '';
+
+          return `
+            <div class="col-12 col-md-6 col-xl-4">
+              <div class="card project-card ${cardBgClass} h-100 shadow-sm border border-light-subtle">
+                <div class="card-body d-flex flex-column">
+                  <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div class="d-flex gap-2 align-items-center">
+                      <span class="badge badge-year">${p.namThucHien || '2026'}</span>
+                      <span class="badge ${statusBadgeClass}" style="font-size: 0.7rem; font-weight: 600;">${status}</span>
+                    </div>
+                    <span class="text-primary small fw-bold">#${p.maDA}</span>
+                  </div>
+                  <h5 class="card-title fw-bold mb-3 text-dark-emphasis">${p.tenDA}</h5>
+                  
+                  <p class="card-text text-muted small mb-4 text-truncate-3" style="min-height: 48px;">
+                    ${p.moTa || 'Chưa có mô tả chi tiết cho dự án này.'}
+                  </p>
+                  
+                  <div class="mb-4 mt-auto">
+                    <div class="d-flex justify-content-between small mb-1">
+                      <span class="text-muted">Tiến độ</span>
+                      <span class="fw-bold text-primary">${p.tiDo || 0}%</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                      <div class="progress-bar bg-primary" role="progressbar" style="width: ${p.tiDo || 0}%"></div>
+                    </div>
+                  </div>
+
+                  <div class="d-flex align-items-center justify-content-between pt-3 border-top mt-2">
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="rounded-circle bg-light d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                        <i class="bi bi-person text-secondary"></i>
+                      </div>
+                      <div class="small">
+                        <div class="text-muted" style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px;">Phụ trách</div>
+                        <div class="fw-semibold text-dark" style="font-size: 0.85rem;">${p.phuTrachKT || 'Chưa phân công'}</div>
+                      </div>
+                    </div>
+                    
+                    <!-- ACTIONS BUTTONS -->
+                    ${actionButtons}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Attach event listeners to Edit and Delete buttons
+        document.querySelectorAll('.btn-edit-proj').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const maDA = btn.getAttribute('data-id');
+            openEditModal(maDA);
+          });
+        });
+
+        document.querySelectorAll('.btn-delete-proj').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const maDA = btn.getAttribute('data-id');
+            deleteProject(maDA);
+          });
+        });
+
+      } catch (err) {
+        grid.innerHTML = `<div class="col-12 text-center text-danger py-5">Lỗi tải dữ liệu: ${err.message}</div>`;
+      }
+    }
+
+    // Interactive File Upload Handler using Google Drive Action
+    async function handleFileUpload(event, type) {
+      const files = event.target.files;
+      if (!files.length) return;
+
+      const maDAInput = document.querySelector(`#${type}ProjectForm [name="maDA"]`);
+      const tenDAInput = document.querySelector(`#${type}ProjectForm [name="tenDA"]`);
+      const namThucHienInput = document.querySelector(`#${type}ProjectForm [name="namThucHien"]`);
+
+      const maDA = maDAInput ? maDAInput.value.trim() : '';
+      const tenDA = tenDAInput ? tenDAInput.value.trim() : '';
+      const namThucHien = namThucHienInput ? namThucHienInput.value.trim() : '2026';
+
+      if (!maDA || !tenDA) {
+        alert("Vui lòng điền 'Mã DA' và 'Tên dự án' trước khi tải tệp đính kèm để hệ thống tạo đúng thư mục!");
+        event.target.value = '';
+        return;
+      }
+
+      const statusEl = document.getElementById(`${type}FileUploadStatus`);
+      statusEl.classList.remove('d-none');
+      statusEl.classList.add('d-flex');
+
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const base64Data = await convertFileToBase64(file);
+          
+          // Call API to upload directly to project's Google Drive folder
+          const driveUrl = await uploadProjectFileAPI(maDA, namThucHien, tenDA, file.name, base64Data);
+          
+          const fileObj = { name: file.name, url: driveUrl };
+          if (type === 'add') {
+            addFilesList.push(fileObj);
+          } else {
+            editFilesList.push(fileObj);
+          }
+        }
+        
+        renderFilesList(type);
+      } catch (e) {
+        alert("Lỗi tải tệp lên Drive: " + e.message);
+      } finally {
+        statusEl.classList.add('d-none');
+        statusEl.classList.remove('d-flex');
+        event.target.value = ''; // Reset file input
+      }
+    }
+
+    // Helper: Convert File object to Base64 Data URL
+    function convertFileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+      });
+    }
+
+    // Safe direct API post for file upload (bulletproof offline & online)
+    async function uploadProjectFileAPI(maDA, namThucHien, tenDA, fileName, base64Data) {
+      if (typeof apiPost !== 'undefined') {
+        return await apiPost({ action: 'upload_project_file', maDA, namThucHien, tenDA, fileName, base64Data });
+      } else {
+        const res = await fetch(SCRIPT_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify({ action: 'upload_project_file', maDA, namThucHien, tenDA, fileName, base64Data })
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+    }
+
+    // Render file links with Delete buttons in modal list
+    function renderFilesList(type) {
+      const container = document.getElementById(`${type}FilesList`);
+      const hiddenInput = document.getElementById(`${type}FilesHidden`);
+      const list = type === 'add' ? addFilesList : editFilesList;
+
+      if (!list.length) {
+        container.innerHTML = '<div class="text-muted small py-2 text-center border border-dashed rounded">Chưa có tài liệu đính kèm.</div>';
+        hiddenInput.value = '';
+        return;
+      }
+
+      container.innerHTML = list.map((f, index) => {
+        return `
+          <div class="d-flex align-items-center justify-content-between p-2 bg-light border rounded">
+            <a href="${f.url}" target="_blank" class="small fw-semibold text-truncate me-2" style="max-width: 80%; text-decoration: none;">
+              <i class="bi bi-file-earmark-arrow-up text-primary me-1"></i> ${f.name}
+            </a>
+            <button type="button" class="btn btn-link text-danger p-0 m-0" onclick="deleteAttachedFile('${type}', ${index})">
+              <i class="bi bi-x-circle-fill"></i>
+            </button>
+          </div>
+        `;
+      }).join('');
+
+      // Build newline separated string for spreadsheet cell
+      hiddenInput.value = list.map(f => `${f.name}|${f.url}`).join('\n');
+    }
+
+    // Delete attached file from list
+    window.deleteAttachedFile = function(type, index) {
+      if (type === 'add') {
+        addFilesList.splice(index, 1);
+      } else {
+        editFilesList.splice(index, 1);
+      }
+      renderFilesList(type);
+    }
+
+    // Open Edit Project Modal & Load Data
+    function openEditModal(maDA) {
+      const p = allProjectsList.find(proj => proj.maDA == maDA);
+      if (!p) {
+        alert("Không tìm thấy thông tin dự án!");
+        return;
+      }
+
+      const form = document.getElementById('editProjectForm');
+      form.reset();
+
+      // Fill basic inputs
+      form.querySelector('[name="maDA"]').value = p.maDA || '';
+      form.querySelector('[name="tenDA"]').value = p.tenDA || '';
+      form.querySelector('[name="phuTrachKT"]').value = p.phuTrachKT || '';
+      form.querySelector('[name="phuTrachKeToan"]').value = p.phuTrachKeToan || '';
+      form.querySelector('[name="namThucHien"]').value = p.namThucHien || '2026';
+      form.querySelector('[name="trangThai"]').value = p.trangThai || 'Chưa triển khai';
+      form.querySelector('[name="loaiDA"]').value = p.loaiDA || '';
+      form.querySelector('[name="moTa"]').value = p.moTa || '';
+      form.querySelector('[name="ghiChu"]').value = p.ghiChu || '';
+      
+      // Formatting and filling dates
+      setDateInputValue(form.querySelector('[name="ngayBatDau"]'), p.ngayBatDau ? p.ngayBatDau.substring(0, 10) : '');
+      setDateInputValue(form.querySelector('[name="ngayKetThuc"]'), p.ngayKetThuc ? p.ngayKetThuc.substring(0, 10) : '');
+
+      // Finance fields
+      form.querySelector('[name="tongMucDauTu"]').value = p.tongMucDauTu || 0;
+      form.querySelector('[name="tongGTQuyetToan"]').value = p.tongGTQuyetToan || 0;
+      form.querySelector('[name="nguonCBDT"]').value = p.nguonCBDT || 0;
+      form.querySelector('[name="nguonNSTT"]').value = p.nguonNSTT || 0;
+      form.querySelector('[name="nguonThuSDD"]').value = p.nguonThuSDD || 0;
+      form.querySelector('[name="nguonTangThuSDD"]').value = p.nguonTangThuSDD || 0;
+      form.querySelector('[name="vonTinhXSKT"]').value = p.vonTinhXSKT || 0;
+
+      formatAllCurrencyInputsInForm(form);
+      calculateEditTotalCapital();
+
+      // Parse files column
+      // Support formats: "FileName|URL" or just raw URL on each line
+      editFilesList = [];
+      if (p.file) {
+        const lines = p.file.split('\n').filter(Boolean);
+        lines.forEach(line => {
+          if (line.includes('|')) {
+            const parts = line.split('|');
+            editFilesList.push({ name: parts[0], url: parts[1] });
+          } else {
+            // Fallback for raw URLs
+            editFilesList.push({ name: line.substring(line.lastIndexOf('/') + 1) || 'Tài liệu dự án', url: line });
+          }
+        });
+      }
+      renderFilesList('edit');
+
+      // Switch to first tab when opening
+      const triggerEl = document.querySelector('#editProjTabs button[data-bs-target="#edit-general"]');
+      if (triggerEl) {
+        const tabInstance = bootstrap.Tab.getInstance(triggerEl) || new bootstrap.Tab(triggerEl);
+        tabInstance.show();
+      }
+
+      // Show Modal
+      const modal = new bootstrap.Modal(document.getElementById('editProjectModal'));
+      modal.show();
+    }
+
+    // Update Project
+    async function updateProject() {
+      const form = document.getElementById('editProjectForm');
+      const maDA = form.querySelector('[name="maDA"]').value;
+      if (!maDA) return;
+
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+      
+      // Update files cell
+      data.file = editFilesList.map(f => `${f.name}|${f.url}`).join('\n');
+
+      // Convert numeric fields to clean Numbers
+      const numericFields = ['namThucHien', 'tongMucDauTu', 'tongGTQuyetToan', 'nguonCBDT', 'nguonNSTT', 'nguonThuSDD', 'nguonTangThuSDD', 'vonTinhXSKT'];
+      numericFields.forEach(f => {
+        if (data[f] !== undefined) {
+          const rawString = String(data[f]).replace(/\D/g, '');
+          data[f] = Number(rawString || 0);
+        }
+      });
+
+      try {
+        await API.update('duan', maDA, data);
+        bootstrap.Modal.getInstance(document.getElementById('editProjectModal')).hide();
+        loadProjects();
+      } catch (err) {
+        alert("Lỗi khi cập nhật dự án: " + err.message);
+      }
+    }
+
+    // Save Project (Add new)
+    async function saveProject() {
+      const form = document.getElementById('addProjectForm');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      // Validation
+      if (!data.maDA || !data.tenDA) {
+        alert("Vui lòng nhập Mã DA và Tên dự án!");
+        return;
+      }
+
+      // Update files cell
+      data.file = addFilesList.map(f => `${f.name}|${f.url}`).join('\n');
+
+      // Convert numeric fields
+      const numericFields = ['namThucHien', 'tongMucDauTu', 'tongGTQuyetToan', 'nguonCBDT', 'nguonNSTT', 'nguonThuSDD', 'nguonTangThuSDD', 'vonTinhXSKT'];
+      numericFields.forEach(f => {
+        if (data[f] !== undefined) {
+          const rawString = String(data[f]).replace(/\D/g, '');
+          data[f] = Number(rawString || 0);
+        }
+      });
+
+      try {
+        await API.create('duan', data);
+        bootstrap.Modal.getInstance(document.getElementById('addProjectModal')).hide();
+        form.reset();
+        formatAllCurrencyInputsInForm(form);
+        addFilesList = [];
+        renderFilesList('add');
+        loadProjects();
+      } catch (err) {
+        alert("Lỗi khi lưu dự án mới: " + err.message);
+      }
+    }
+
+    // Delete Project
+    async function deleteProject(maDA) {
+      const confirmDelete = confirm(`Bạn có chắc chắn muốn xóa Dự án #${maDA}? Hành động này không thể hoàn tác!`);
+      if (!confirmDelete) return;
+
+      try {
+        await API.delete('duan', maDA);
+        loadProjects();
+      } catch (err) {
+        alert("Lỗi khi xóa dự án: " + err.message);
+      }
+    }
+
+    function exportToExcel() {
+      if (!allProjectsList || allProjectsList.length === 0) {
+        alert("Không có dữ liệu dự án để xuất!");
+        return;
+      }
+
+      const schema = {
+        "Mã DA": "maDA", "Tên dự án": "tenDA", "Mô tả dự án": "moTa", "Năm thực hiện": "namThucHien",
+        "Phụ trách kỹ thuật": "phuTrachKT", "Phụ trách kế toán": "phuTrachKeToan", "Ngày bắt đầu": "ngayBatDau",
+        "Ngày kết thúc": "ngayKetThuc", "Trạng thái dự án": "trangThai", "Tổng mức đầu tư (đ)": "tongMucDauTu",
+        "Tổng GT Quyết toán (đ)": "tongGTQuyetToan", "Nguồn Chuẩn bị đầu tư (đ)": "nguonCBDT",
+        "Nguồn NS tập trung (đ)": "nguonNSTT", "Nguồn thu tiền SDĐ (đ)": "nguonThuSDD",
+        "Nguồn tăng thu tiền SDĐ tỉnh bổ sung (đ)": "nguonTangThuSDD", "Vốn tỉnh (XSKT) (đ)": "vonTinhXSKT",
+        "Loại Dự án": "loaiDA", "File đính kèm": "file", "Ghi chú": "ghiChu"
+      };
+
+      const exportData = allProjectsList.map(item => {
+        const row = {};
+        for (const h in schema) {
+          const key = schema[h];
+          let val = item[key];
+          if (val === undefined || val === null) val = "";
+          
+          // Format Date sang DD/MM/YYYY
+          if (key.toLowerCase().includes('ngay') && val) {
+            const dateVal = new Date(val);
+            if (!isNaN(dateVal.getTime())) {
+              const day = String(dateVal.getDate()).padStart(2, '0');
+              const month = String(dateVal.getMonth() + 1).padStart(2, '0');
+              val = `${day}/${month}/${dateVal.getFullYear()}`;
+            }
+          }
+          
+          row[h] = val;
+        }
+        return row;
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Dự án");
+      XLSX.writeFile(workbook, "CPM_Duan.xlsx");
+    }
+
+    function setupSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const toggleBtn = document.getElementById('sidebarCollapse');
+      const sidebarCollapseMobile = document.getElementById('sidebarCollapseMobile');
+
+      if(toggleBtn) toggleBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('active');
+      });
+      if(sidebarCollapseMobile) sidebarCollapseMobile.addEventListener('click', () => {
+        sidebar.classList.remove('active');
+      });
+    }
+  </script>
+</body>
+</html>

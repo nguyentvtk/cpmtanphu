@@ -1,0 +1,1761 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bảng Công việc Kanban — CPM 5.0</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Flatpickr CSS & JS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/vn.js"></script>
+  <!-- SortableJS for Drag and Drop -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <!-- Shared API Helper -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper for both Local and GAS environments -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal 
+                ? (isIndexPage ? "pages/login.html" : "login.html") 
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang: Kiểm tra phiên đăng nhập
+    const userProfile = Auth.checkAuth(false);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' || 
+                      window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1';
+      
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+
+      // 1. Tự động điều chỉnh link sidebar
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top'; // Quan trọng: Thoát khỏi iframe GAS
+        }
+      });
+
+      // 2. Điền thông tin profile động vào sidebar
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+
+      // 3. Đăng ký sự kiện nút Đăng xuất
+      const btnLogout = document.getElementById('btnLogout') || document.querySelector('.btn-outline-danger');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+          e.preventDefault();
+          Auth.logout();
+        });
+      }
+    });
+  </script>
+  <?!= include('api'); ?>
+
+  <!-- Fallback for local testing if GAS include didn't run -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        login:  (email, password)  => apiPost({ action: 'login',  email, password })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+  
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-light);
+      overflow-x: hidden;
+    }
+
+    #sidebar {
+      width: var(--sidebar-width);
+      height: 100vh;
+      position: fixed;
+      left: 0;
+      top: 0;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-color);
+      transition: all 0.3s;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+    }
+
+    #sidebar .sidebar-header {
+      padding: 20px 24px;
+      background: var(--sidebar-bg);
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    #sidebar .nav-link {
+      color: var(--sidebar-color);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease-in-out;
+      font-weight: 500;
+    }
+
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      color: var(--sidebar-active-color) !important;
+      background: var(--sidebar-active-bg) !important;
+      border-left: 4px solid var(--primary-color);
+    }
+
+    #sidebar .nav-link i {
+      font-size: 1.1rem;
+    }
+
+    #content {
+      margin-left: var(--sidebar-width);
+      width: calc(100% - var(--sidebar-width));
+      min-height: 100vh;
+      transition: all 0.3s;
+      padding: 20px;
+    }
+
+    @media (max-width: 991.98px) {
+      #sidebar {
+        margin-left: calc(-1 * var(--sidebar-width));
+      }
+      #sidebar.active {
+        margin-left: 0;
+      }
+      #content {
+        margin-left: 0;
+        width: 100%;
+      }
+      #content.active {
+        margin-left: var(--sidebar-width);
+      }
+    }
+
+    .top-navbar {
+      background: white;
+      box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+      margin: -20px -20px 20px -20px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+
+    /* Kanban Styles */
+    .kanban-board {
+      display: flex;
+      gap: 1.5rem;
+      overflow-x: auto;
+      padding-bottom: 1rem;
+      align-items: flex-start;
+    }
+
+    .kanban-column {
+      min-width: 300px;
+      width: 300px;
+      background: #e2e8f0;
+      border-radius: 12px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 180px);
+    }
+
+    .column-header {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: #475569;
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .task-list {
+      flex-grow: 1;
+      min-height: 100px;
+      overflow-y: auto;
+    }
+
+    .task-card {
+      background: white;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      cursor: grab;
+      border-left: 4px solid transparent;
+      transition: transform 0.1s;
+    }
+    .task-card:active { cursor: grabbing; }
+    .task-card:hover { transform: scale(1.02); }
+
+    .priority-high { border-left-color: #ef4444; }
+    .priority-medium { border-left-color: #f59e0b; }
+    .priority-low { border-left-color: #3b82f6; }
+
+    .stats-panel {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    /* Custom Toast styles for Premium UI */
+    .custom-toast {
+      background: rgba(255, 255, 255, 0.85) !important;
+      backdrop-filter: blur(12px) saturate(180%);
+      -webkit-backdrop-filter: blur(12px) saturate(180%);
+      border-radius: 12px !important;
+      border: 1px solid rgba(255, 255, 255, 0.5) !important;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .custom-toast.toast-success {
+      border-left: 5px solid #10b981 !important;
+    }
+    .custom-toast.toast-danger {
+      border-left: 5px solid #ef4444 !important;
+    }
+    .custom-toast.toast-warning {
+      border-left: 5px solid #f59e0b !important;
+    }
+    .custom-toast.toast-info {
+      border-left: 5px solid #3b82f6 !important;
+    }
+    .custom-toast .toast-header {
+      background: transparent !important;
+      border-bottom: none !important;
+    }
+  
+    /* Premium Indigo Buttons */
+    .btn-primary {
+      background: var(--primary-gradient) !important;
+      border: none !important;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+      transition: all 0.2s ease !important;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.35) !important;
+      transform: translateY(-1px);
+    }
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+    
+    /* Card headers & Table styling */
+    .card {
+      border: 1px solid var(--border-color) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02) !important;
+      overflow: hidden;
+    }
+    .table th {
+      background-color: #f8fafc !important;
+      color: #475569 !important;
+      font-weight: 600 !important;
+      font-size: 0.8rem !important;
+      text-uppercase: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    /* Màu sắc trạng thái nhiệm vụ */
+    .badge-status-danhan {
+      background-color: #f8d7da !important;
+      color: #842029 !important;
+      border: 1px solid #f5c2c7 !important;
+    }
+    .badge-status-hoanthanh {
+      background-color: #0f5132 !important;
+      color: #ffffff !important;
+    }
+    .badge-status-tre {
+      background-color: #fff3cd !important;
+      color: #664d03 !important;
+      border: 1px solid #ffecb5 !important;
+    }
+    .badge-status-khonghoanthanh {
+      background-color: #5c3a21 !important;
+      color: #ffffff !important;
+    }
+    .badge-status-huy {
+      background-color: #dc3545 !important;
+      color: #ffffff !important;
+    }
+    .badge-status-giahan {
+      background-color: #e2e3e5 !important;
+      color: #41464b !important;
+      border: 1px solid #d3d6d8 !important;
+    }
+  </style>
+</head>
+<body>
+  <!-- Toast Container for Premium UI Notifications -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;" id="toastContainer"></div>
+
+        <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span>CPM 5.0</span>
+      <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link ">
+        <i class="bi bi-speedometer2"></i>
+        <span>Tổng quan</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link ">
+        <i class="bi bi-briefcase"></i>
+        <span>Dự án</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link active">
+        <i class="bi bi-list-task"></i>
+        <span>Nhiệm vụ</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link ">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>Hợp đồng</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link ">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Sơ đồ Gantt</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link ">
+        <i class="bi bi-people"></i>
+        <span>Nhân viên</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link ">
+        <i class="bi bi-building"></i>
+        <span>Nhà thầu</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link ">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Tư vấn giám sát</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link ">
+        <i class="bi bi-journal-richtext"></i>
+        <span>Báo cáo ngày</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link ">
+        <i class="bi bi-calculator"></i>
+        <span>Quyết toán DAHT</span>
+      </a>
+    </div>
+
+    <!-- Hỗ trợ kỹ thuật -->
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <!-- Zalo -->
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Zalo hỗ trợ">
+            <i class="bi bi-chat-dots-fill fs-6"></i>
+          </a>
+          <!-- Gmail -->
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Gửi Email">
+            <i class="bi bi-envelope-fill fs-6"></i>
+          </a>
+          <!-- Youtube -->
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s; background-color: #ff0000 !important;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Kênh Youtube">
+            <i class="bi bi-youtube fs-6"></i>
+          </a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+
+    <!-- Profile (Footer) -->
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">
+            A
+          </div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4 class="fw-bold mb-0">Bảng Công việc (Kanban)</h4>
+      <button class="btn btn-primary btn-sm px-3" id="btnAddTask" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+        <i class="bi bi-plus-lg"></i> Giao nhiệm vụ
+      </button>
+    </div>
+
+    <!-- Stats Panel -->
+    <div class="stats-panel mb-4">
+      <h6 class="fw-bold mb-3 small text-muted text-uppercase">Thống kê theo nhân viên</h6>
+      <div class="row g-3" id="employeeStats">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+    <!-- Kanban Board -->
+    <div class="kanban-board">
+      
+      <!-- Đã nhận -->
+      <div class="kanban-column" data-status="Đã nhận" style="border-top: 4px solid #842029;">
+        <div class="column-header">
+          <span style="color: #842029;">ĐÃ NHẬN</span>
+          <span class="badge badge-status-danhan rounded-pill" id="count-danhan">0</span>
+        </div>
+        <div class="task-list" id="list-danhan"></div>
+      </div>
+
+      <!-- Gia hạn -->
+      <div class="kanban-column" data-status="Gia hạn" style="border-top: 4px solid #6c757d;">
+        <div class="column-header">
+          <span style="color: #41464b;">GIA HẠN</span>
+          <span class="badge badge-status-giahan rounded-pill" id="count-giahan">0</span>
+        </div>
+        <div class="task-list" id="list-giahan"></div>
+      </div>
+
+      <!-- Trễ -->
+      <div class="kanban-column" data-status="Trễ" style="border-top: 4px solid #ffc107;">
+        <div class="column-header">
+          <span style="color: #664d03;">TRỄ</span>
+          <span class="badge badge-status-tre rounded-pill" id="count-tre">0</span>
+        </div>
+        <div class="task-list" id="list-tre"></div>
+      </div>
+
+      <!-- Hoàn thành -->
+      <div class="kanban-column" data-status="Hoàn thành" style="border-top: 4px solid #0f5132;">
+        <div class="column-header">
+          <span style="color: #0f5132;">HOÀN THÀNH</span>
+          <span class="badge badge-status-hoanthanh rounded-pill" id="count-hoanthanh">0</span>
+        </div>
+        <div class="task-list" id="list-hoanthanh"></div>
+      </div>
+
+      <!-- Không hoàn thành -->
+      <div class="kanban-column" data-status="Không hoàn thành" style="border-top: 4px solid #5c3a21;">
+        <div class="column-header">
+          <span style="color: #5c3a21;">KHÔNG HOÀN THÀNH</span>
+          <span class="badge badge-status-khonghoanthanh rounded-pill" id="count-khonghoanthanh">0</span>
+        </div>
+        <div class="task-list" id="list-khonghoanthanh"></div>
+      </div>
+
+      <!-- Hủy -->
+      <div class="kanban-column" data-status="Hủy" style="border-top: 4px solid #dc3545;">
+        <div class="column-header">
+          <span style="color: #dc3545;">HỦY</span>
+          <span class="badge badge-status-huy rounded-pill" id="count-huy">0</span>
+        </div>
+        <div class="task-list" id="list-huy"></div>
+      </div>
+
+    </div>
+
+  <!-- Add Task Modal -->
+  <div class="modal fade" id="addTaskModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title fw-bold">Giao Nhiệm vụ mới</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="addTaskForm">
+            <div class="mb-3">
+              <label class="form-label small fw-bold">Mã nhiệm vụ (Tự động tạo)</label>
+              <input type="text" class="form-control" name="maNV" readonly required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">Dự án</label>
+              <select class="form-select" name="maDA" id="selectProject" required>
+                <option value="">Đang tải danh sách dự án...</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">Mô tả nhiệm vụ</label>
+              <textarea class="form-control" name="moTa" rows="3" required></textarea>
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Người thực hiện</label>
+                <select class="form-select" name="nguoiThucHien" id="selectEmployee" required>
+                  <option value="">Đang tải...</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Độ ưu tiên</label>
+                <select class="form-select" name="uuTien" required>
+                  <option value="Cao">Cao</option>
+                  <option value="Trung bình" selected>Trung bình</option>
+                  <option value="Thấp">Thấp</option>
+                </select>
+              </div>
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Ngày bắt đầu</label>
+                <input type="text" class="form-control datepicker" name="ngayBatDau" placeholder="Chọn ngày..." required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold">Hạn chót</label>
+                <input type="text" class="form-control datepicker" name="hanChot" placeholder="Chọn ngày..." required>
+              </div>
+            </div>
+            <div class="mb-3 border-top pt-3 mt-3">
+              <label class="form-label small fw-bold text-muted">Tài liệu đính kèm (nếu có)</label>
+              <input type="file" class="form-control" id="addFileInput" multiple>
+              <div class="d-none mt-2 align-items-center gap-2 text-primary" id="addFileUploadStatus">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+                <span class="small fw-semibold">Đang tải file lên Drive dự án...</span>
+              </div>
+              <div id="addFilesList" class="d-flex flex-column gap-2 mt-2">
+                <!-- File list rendered here -->
+              </div>
+              <input type="hidden" name="file" id="addFilesHidden">
+              <input type="hidden" name="trangThai" value="Đã nhận">
+            </div>
+            
+            <!-- Checkbox Gửi mail và đồng bộ lịch -->
+            <div class="row g-3 mb-2 border-top pt-3 mt-3">
+              <div class="col-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="sendEmailCheckbox">
+                  <label class="form-check-label small fw-bold text-muted" for="sendEmailCheckbox">Gửi Email</label>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="syncCalendarCheckbox">
+                  <label class="form-check-label small fw-bold text-muted" for="syncCalendarCheckbox">Thêm vào Calendar</label>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-primary px-4" id="btnSaveTask">Lưu nhiệm vụ</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Details Modal -->
+  <div class="modal fade" id="taskDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header text-white" style="background: linear-gradient(135deg, #a78bfa, #c084fc); border-bottom: none; padding: 1.25rem 1.5rem;">
+          <h5 class="modal-title fw-bold" id="taskDetailsTitle">Chi tiết Nhiệm vụ</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="editTaskForm">
+            <input type="hidden" name="maNV">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-muted">Dự án</label>
+                <select class="form-select" name="maDA" id="editSelectProject" required>
+                  <!-- Load dynamically -->
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-muted">Người thực hiện</label>
+                <select class="form-select" name="nguoiThucHien" id="editSelectEmployee" required>
+                  <!-- Load dynamically -->
+                </select>
+              </div>
+            </div>
+            
+            <div class="mb-3 mt-3">
+              <label class="form-label small fw-bold text-muted">Mô tả nhiệm vụ</label>
+              <textarea class="form-control" name="moTa" rows="3" required></textarea>
+            </div>
+
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <label class="form-label small fw-bold text-muted">Độ ưu tiên</label>
+                 <select class="form-select" name="uuTien" required>
+                   <option value="Cao">Cao</option>
+                   <option value="Trung bình">Trung bình</option>
+                   <option value="Thấp">Thấp</option>
+                 </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small fw-bold text-muted">Trạng thái</label>
+                <select class="form-select" name="trangThai" id="editTrangThai" required>
+                  <option value="Đã nhận">Đã nhận</option>
+                  <option value="Hoàn thành">Hoàn thành</option>
+                  <option value="Trễ">Trễ</option>
+                  <option value="Không hoàn thành">Không hoàn thành</option>
+                  <option value="Hủy">Hủy</option>
+                  <option value="Gia hạn">Gia hạn</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small fw-bold text-muted">Tiến độ (%)</label>
+                <div class="d-flex align-items-center gap-2">
+                  <input type="range" class="form-range flex-grow-1" name="tiDo" min="0" max="100" step="5" id="editTiDoRange">
+                  <span class="fw-bold text-primary" id="editTiDoVal" style="min-width: 40px; text-align: right;">0%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <label class="form-label small fw-bold text-muted">Ngày bắt đầu</label>
+                <input type="text" class="form-control datepicker" name="ngayBatDau" placeholder="Chọn ngày..." required>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small fw-bold text-muted">Hạn chót</label>
+                <input type="text" class="form-control datepicker" name="hanChot" placeholder="Chọn ngày..." required>
+              </div>
+              <div class="col-md-4" id="editNgayXongCol">
+                <label class="form-label small fw-bold text-muted">Ngày xong (nếu có)</label>
+                <input type="text" class="form-control datepicker" name="ngayXong" placeholder="Chọn ngày...">
+              </div>
+            </div>
+            <div class="mb-3 border-top pt-3 mt-3">
+              <label class="form-label small fw-bold text-muted">Tài liệu đính kèm (nếu có)</label>
+              <input type="file" class="form-control" id="editFileInput" multiple>
+              <div class="d-none mt-2 align-items-center gap-2 text-primary" id="editFileUploadStatus">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+                <span class="small fw-semibold">Đang tải file lên Drive dự án...</span>
+              </div>
+              <div id="editFilesList" class="d-flex flex-column gap-2 mt-2">
+                <!-- File list rendered here -->
+              </div>
+              <input type="hidden" name="file" id="editFilesHidden">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer d-flex justify-content-between align-items-center" id="taskDetailsFooter">
+          <div id="normalFooterLeft">
+            <button type="button" class="btn btn-outline-danger" id="btnDeleteTask">
+              <i class="bi bi-trash3-fill"></i> Xóa nhiệm vụ
+            </button>
+          </div>
+          <div class="d-flex gap-2" id="normalFooterRight">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+            <button type="button" class="btn btn-primary px-4" id="btnUpdateTask">Cập nhật</button>
+          </div>
+          
+          <!-- Vùng xác nhận xóa an toàn và thẩm mỹ (Ẩn mặc định) -->
+          <div id="deleteConfirmZone" class="w-100 d-none">
+            <div class="alert alert-danger d-flex align-items-center justify-content-between mb-0 py-2 px-3 border-0 shadow-sm" style="border-radius: 8px;">
+              <div class="d-flex align-items-center gap-2 small">
+                <i class="bi bi-exclamation-triangle-fill fs-6 text-danger"></i>
+                <span class="fw-medium text-danger-emphasis">Xác nhận xóa nhiệm vụ này? Hành động này không thể hoàn tác.</span>
+              </div>
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-light border" id="btnCancelDelete">Quay lại</button>
+                <button type="button" class="btn btn-sm btn-danger px-3" id="btnConfirmDelete">Đồng ý Xóa</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let _allProjects = [];
+    let _allEmployees = [];
+    let _allTasks = [];
+    let currentEditingTask = null;
+    let currentTaskPerm = null;
+    let addFilesList = [];
+    let editFilesList = [];
+
+    // Hàm an toàn gán trị ngày tháng cho datepicker (Flatpickr)
+    function setDateInputValue(el, value) {
+      if (typeof el === 'string') el = document.querySelector(el);
+      if (el) {
+        if (el._flatpickr) {
+          el._flatpickr.setDate(value || '', true);
+        } else {
+          el.value = value || '';
+        }
+      }
+    }
+
+    // Hàm hiển thị thông báo Toast sang trọng thay thế alert truyền thống
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+
+      const toastId = 'toast-' + Date.now();
+      const iconMap = {
+        success: 'bi-check-circle-fill text-success',
+        danger: 'bi-exclamation-triangle-fill text-danger',
+        warning: 'bi-exclamation-circle-fill text-warning',
+        info: 'bi-info-circle-fill text-info'
+      };
+      const icon = iconMap[type] || 'bi-info-circle-fill';
+      const headerText = type === 'success' ? 'Thành công' : 
+                         (type === 'danger' ? 'Lỗi hệ thống' : 
+                         (type === 'warning' ? 'Cảnh báo' : 'Thông báo'));
+
+      const toastHtml = `
+        <div id="${toastId}" class="toast custom-toast toast-${type} align-items-center border-0 show" role="alert" aria-live="assertive" aria-atomic="true">
+          <div class="toast-header">
+            <i class="bi ${icon} me-2 fs-5"></i>
+            <strong class="me-auto text-dark fw-bold" style="font-size: 0.85rem;">${headerText}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close" onclick="document.getElementById('${toastId}').remove()"></button>
+          </div>
+          <div class="toast-body pt-0 pb-3 text-secondary-emphasis" style="font-size: 0.85rem; padding-left: 2.25rem;">
+            ${message}
+          </div>
+        </div>
+      `;
+
+      container.insertAdjacentHTML('beforeend', toastHtml);
+      const toastEl = document.getElementById(toastId);
+      
+      // Auto remove after 4.5 seconds
+      setTimeout(() => {
+        if (toastEl) {
+          toastEl.classList.remove('show');
+          toastEl.classList.add('fade');
+          setTimeout(() => toastEl.remove(), 300);
+        }
+      }, 4500);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Khởi tạo Flatpickr cho các datepicker
+      flatpickr(".datepicker", {
+        locale: "vn",
+        altInput: true,
+        altFormat: "d/m/Y",
+        dateFormat: "Y-m-d",
+        allowInput: true
+      });
+
+      loadAllData();
+      initSortable();
+      setupModalLoaders();
+      
+      document.getElementById('btnSaveTask').addEventListener('click', saveTask);
+      document.getElementById('btnUpdateTask').addEventListener('click', updateTask);
+
+      // Đăng ký sự kiện upload file đính kèm
+      document.getElementById('addFileInput').addEventListener('change', (e) => handleFileUpload(e, 'add'));
+      document.getElementById('editFileInput').addEventListener('change', (e) => handleFileUpload(e, 'edit'));
+      
+      // Bộ điều khiển xác nhận xóa an toàn
+      document.getElementById('btnDeleteTask').addEventListener('click', () => {
+        document.getElementById('deleteConfirmZone').classList.remove('d-none');
+        document.getElementById('normalFooterLeft').classList.add('d-none');
+        document.getElementById('normalFooterRight').classList.add('d-none');
+      });
+      
+      document.getElementById('btnCancelDelete').addEventListener('click', () => {
+        document.getElementById('deleteConfirmZone').classList.add('d-none');
+        document.getElementById('normalFooterLeft').classList.remove('d-none');
+        document.getElementById('normalFooterRight').classList.remove('d-none');
+      });
+      
+      document.getElementById('btnConfirmDelete').addEventListener('click', confirmDeleteTask);
+      
+      // Đồng bộ trạng thái và tiến độ trong modal sửa
+      const editTrangThai = document.getElementById('editTrangThai');
+      const editTiDoRange = document.getElementById('editTiDoRange');
+      const editTiDoVal = document.getElementById('editTiDoVal');
+      const editNgayXong = document.querySelector('#editTaskForm [name="ngayXong"]');
+
+      editTrangThai.addEventListener('change', () => {
+        const val = editTrangThai.value;
+        if (currentTaskPerm && currentTaskPerm.canEditProgress && !currentTaskPerm.canEditAll) {
+          document.getElementById('btnUpdateTask').style.display = 'block';
+        }
+        if (val === 'Hoàn thành') {
+          editTiDoRange.value = 100;
+          editTiDoVal.textContent = '100%';
+          if (!editNgayXong.value) {
+            setDateInputValue(editNgayXong, new Date().toISOString().split('T')[0]);
+          }
+        } else {
+          if (editTiDoRange.value == 100) {
+            editTiDoRange.value = 90;
+            editTiDoVal.textContent = '90%';
+          }
+          setDateInputValue(editNgayXong, currentEditingTask ? (currentEditingTask.ngayXong || '') : '');
+        }
+      });
+
+      editTiDoRange.addEventListener('input', (e) => {
+        const tiDo = parseInt(e.target.value);
+        editTiDoVal.textContent = tiDo + '%';
+        if (currentTaskPerm && currentTaskPerm.canEditProgress && !currentTaskPerm.canEditAll) {
+          document.getElementById('btnUpdateTask').style.display = 'block';
+        }
+        if (tiDo === 100) {
+          editTrangThai.value = 'Hoàn thành';
+          if (!editNgayXong.value) {
+            setDateInputValue(editNgayXong, new Date().toISOString().split('T')[0]);
+          }
+        } else {
+          if (editTrangThai.value === 'Hoàn thành') {
+            editTrangThai.value = 'Đã nhận';
+          }
+          setDateInputValue(editNgayXong, currentEditingTask ? (currentEditingTask.ngayXong || '') : '');
+        }
+      });
+    });
+
+    function checkTaskPermission(task) {
+      if (!userProfile) return { canCreate: false, canEditAll: false, canEditProgress: false, canDelete: false };
+      
+      const role = (userProfile.role || '').toLowerCase().trim();
+      const chucVu = (userProfile.chucVu || '').toLowerCase().trim();
+      const hoTen = (userProfile.hoTen || '').toLowerCase().trim();
+
+      const isAdminOrManager = role.includes('admin') || 
+                               role.includes('quản lý') || 
+                               chucVu.includes('giám đốc') || 
+                               chucVu.includes('quản lý') ||
+                               chucVu.includes('trưởng phòng');
+
+      const isAssignedToMe = task && task.nguoiThucHien && 
+                             (task.nguoiThucHien.toLowerCase().trim() === hoTen);
+
+      return {
+        canCreate: isAdminOrManager,
+        canEditAll: isAdminOrManager,
+        canEditProgress: isAdminOrManager || isAssignedToMe,
+        canDelete: isAdminOrManager
+      };
+    }
+
+    function applyUIPermissions() {
+      const perm = checkTaskPermission(null);
+      const btnAddTask = document.getElementById('btnAddTask');
+      if (btnAddTask) {
+        if (perm.canCreate) {
+          btnAddTask.style.display = 'block';
+        } else {
+          btnAddTask.style.display = 'none';
+        }
+      }
+    }
+
+    async function setupModalLoaders() {
+      const modalEl = document.getElementById('addTaskModal');
+      modalEl.addEventListener('show.bs.modal', () => {
+        // Reset danh sách file đính kèm khi mở modal thêm mới
+        addFilesList = [];
+        renderFilesList('add');
+
+        // 1. Tự sinh Mã nhiệm vụ ngẫu nhiên
+        const randId = "NV-" + Math.floor(10000 + Math.random() * 90000);
+        document.querySelector('#addTaskForm [name="maNV"]').value = randId;
+
+        // 2. Điền ngày hôm nay làm ngày bắt đầu mặc định
+        const today = new Date().toISOString().split('T')[0];
+        document.querySelector('#addTaskForm [name="ngayBatDau"]').value = today;
+        document.querySelector('#addTaskForm [name="hanChot"]').value = today;
+
+        // 3. Tải danh sách dự án
+        const projSelect = document.getElementById('selectProject');
+        if (_allProjects.length === 0) {
+          projSelect.innerHTML = '<option value="">Chưa có dự án nào</option>';
+        } else {
+          projSelect.innerHTML = _allProjects.map(p => `<option value="${p.maDA}">${p.tenDA} (${p.maDA})</option>`).join('');
+        }
+
+        // 4. Tải danh sách nhân sự
+        const empSelect = document.getElementById('selectEmployee');
+        if (_allEmployees.length === 0) {
+          empSelect.innerHTML = '<option value="">Chưa có nhân sự nào</option>';
+        } else {
+          empSelect.innerHTML = _allEmployees.map(e => `<option value="${e.hoTen}">${e.hoTen} (${e.chucVu})</option>`).join('');
+        }
+      });
+    }
+
+    async function saveTask() {
+      const form = document.getElementById('addTaskForm');
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+
+      const btn = document.getElementById('btnSaveTask');
+      const originalText = btn.innerHTML;
+
+      try {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Đang lưu...`;
+
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        data.tiDo = 0; // Mặc định 0%
+        data.file = document.getElementById('addFilesHidden').value;
+
+        // 1. Tạo nhiệm vụ mới trên Sheets
+        const res = await API.create('nhiemvu', data);
+        const newTaskId = res.maNV || data.maNV;
+
+        // 2. Kiểm tra các checkbox hành động bổ sung
+        const sendMailChecked = document.getElementById('sendEmailCheckbox').checked;
+        const syncCalChecked = document.getElementById('syncCalendarCheckbox').checked;
+        let actionMsgs = [];
+
+        if (sendMailChecked && newTaskId) {
+          try {
+            await apiPost({ action: 'send_task_email', id: newTaskId });
+            actionMsgs.push("Đã gửi email");
+          } catch (mailErr) {
+            console.error(mailErr);
+            actionMsgs.push("Lỗi gửi email: " + mailErr.message);
+          }
+        }
+
+        if (syncCalChecked && newTaskId) {
+          try {
+            await apiPost({ action: 'sync_task_calendar', id: newTaskId });
+            actionMsgs.push("Đã đồng bộ lịch");
+          } catch (calErr) {
+            console.error(calErr);
+            actionMsgs.push("Lỗi đồng bộ lịch: " + calErr.message);
+          }
+        }
+
+        let successMsg = "Đã giao nhiệm vụ mới thành công!";
+        if (actionMsgs.length > 0) {
+          successMsg += " (" + actionMsgs.join(" | ") + ")";
+        }
+
+        showToast(successMsg, "success");
+        
+        const modalEl = document.getElementById('addTaskModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) {
+          modalInstance.hide();
+        } else {
+          const m = new bootstrap.Modal(modalEl);
+          m.hide();
+        }
+        
+        form.reset();
+        // Reset checkbox
+        document.getElementById('sendEmailCheckbox').checked = false;
+        document.getElementById('syncCalendarCheckbox').checked = false;
+        
+        await loadAllData();
+      } catch (err) {
+        showToast("Lỗi lưu nhiệm vụ: " + err.message, "danger");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
+    }
+
+    async function loadAllData() {
+      try {
+        // Tải Batch tất cả dữ liệu cần thiết cho phân hệ Nhiệm vụ
+        const batchData = await API.batchList(['nhansu', 'duan', 'nhiemvu']).catch(err => {
+          console.warn("Lỗi tải Batch dữ liệu Nhiệm vụ, thực hiện gọi tuần tự fallback:", err);
+          return {};
+        });
+
+        // 1. Xử lý Nhân sự & Map Avatar
+        const employees = batchData.nhansu || [];
+        _allEmployees = employees;
+        window.employeeAvatarMap = {};
+        employees.forEach(e => {
+          if (e.hoTen) window.employeeAvatarMap[e.hoTen] = e.avatar || '';
+        });
+
+        // 2. Xử lý Dự án & Phân quyền
+        _allProjects = batchData.duan || [];
+        window._rawProjects = batchData.duan || []; // Lưu danh sách dự án gốc chưa lọc
+        
+        const isManager = userProfile && (
+          (userProfile.role && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.role)) ||
+          (userProfile.chucVu && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.chucVu))
+        );
+
+        if (!isManager && userProfile && userProfile.hoTen) {
+          const hoTenClean = userProfile.hoTen.trim().toLowerCase();
+          _allProjects = _allProjects.filter(p => {
+            const phuTrachKT = String(p.phuTrachKT || '').trim().toLowerCase();
+            const phuTrachKeToan = String(p.phuTrachKeToan || '').trim().toLowerCase();
+            return phuTrachKT.includes(hoTenClean) || phuTrachKeToan.includes(hoTenClean) || hoTenClean.includes(phuTrachKT) || hoTenClean.includes(phuTrachKeToan);
+          });
+        }
+
+        // 3. Xử lý UI Phân quyền
+        applyUIPermissions();
+
+        // 4. Xử lý Nhiệm vụ & Phân quyền
+        let tasks = batchData.nhiemvu || [];
+        if (!isManager && userProfile && userProfile.hoTen) {
+          const hoTenClean = userProfile.hoTen.trim().toLowerCase();
+          tasks = tasks.filter(t => {
+            const nguoiThucHien = String(t.nguoiThucHien || '').trim().toLowerCase();
+            return nguoiThucHien === hoTenClean;
+          });
+        }
+
+        _allTasks = tasks; // Lưu lại danh sách nhiệm vụ toàn cục
+        renderTasks(tasks);
+        renderStats(tasks);
+      } catch (err) {
+        console.error("Lỗi tải nhiệm vụ:", err);
+      }
+    }
+
+    function formatVietnameseDate(dateStr) {
+      if (!dateStr) return '—';
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('vi-VN');
+    }
+
+    function renderTasks(tasks) {
+      // Clear lists
+      const lists = ['danhan', 'hoanthanh', 'tre', 'khonghoanthanh', 'huy', 'giahan'];
+      lists.forEach(l => {
+        const el = document.getElementById(`list-${l}`);
+        if (el) el.innerHTML = '';
+      });
+
+      const statusMap = {
+        'Đã nhận': 'danhan',
+        'Cần làm': 'danhan',
+        'Chưa bắt đầu': 'danhan',
+        'Đang làm': 'danhan',
+        'Đang thực hiện': 'danhan',
+        'Hoàn thành': 'hoanthanh',
+        'Đã xong': 'hoanthanh',
+        'Trễ': 'tre',
+        'Trễ hạn': 'tre',
+        'Không hoàn thành': 'khonghoanthanh',
+        'Hủy': 'huy',
+        'Gia hạn': 'giahan'
+      };
+
+      tasks.forEach(t => {
+        const targetListId = statusMap[t.trangThai] || 'danhan';
+        const targetList = document.getElementById(`list-${targetListId}`);
+        if (!targetList) return;
+        
+        const priorityClass = t.uuTien === 'Cao' ? 'priority-high' : (t.uuTien === 'Trung bình' ? 'priority-medium' : 'priority-low');
+
+        // Lấy avatar từ map nếu có
+        const avatarStr = window.employeeAvatarMap && window.employeeAvatarMap[t.nguoiThucHien];
+        const initial = (t.nguoiThucHien || '?').trim().charAt(0).toUpperCase();
+        const avatarHtml = (avatarStr && avatarStr.trim() !== '')
+          ? `<img src="${avatarStr}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`
+          : initial;
+
+        // Tạo badge trạng thái với màu sắc tương ứng để hiển thị trên card nhiệm vụ
+        let style = '';
+        if (t.trangThai === 'Hoàn thành' || t.trangThai === 'Đã xong') {
+          style = 'background-color: #0f5132; color: #ffffff;';
+        } else if (t.trangThai === 'Không hoàn thành') {
+          style = 'background-color: #5c3a21; color: #ffffff;';
+        } else if (t.trangThai === 'Hủy') {
+          style = 'background-color: #dc3545; color: #ffffff;';
+        } else if (t.trangThai === 'Trễ' || t.trangThai === 'Trễ hạn') {
+          style = 'background-color: #fff3cd; color: #664d03; border: 1px solid #ffecb5;';
+        } else if (t.trangThai === 'Gia hạn') {
+          style = 'background-color: #e2e3e5; color: #41464b; border: 1px solid #d3d6d8;';
+        } else {
+          // Mặc định Đã nhận
+          style = 'background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7;';
+        }
+        const displayStatus = t.trangThai || 'Đã nhận';
+        const statusBadge = `<span class="badge rounded-pill fw-semibold ms-1" style="${style} font-size: 0.65rem; padding: 3px 8px;">${displayStatus}</span>`;
+
+        const card = document.createElement('div');
+        card.className = `task-card ${priorityClass}`;
+        card.dataset.id = t.maNV; // Use Mã nhiệm vụ as ID
+        card.innerHTML = `
+          <div class="small text-muted mb-1 d-flex justify-content-between align-items-center">
+            <span>#${t.maDA}</span>
+            <div class="d-flex align-items-center">
+              <span class="fw-bold text-uppercase" style="font-size: 0.6rem;">${t.uuTien || 'Trung bình'}</span>
+              ${statusBadge}
+            </div>
+          </div>
+          <div class="fw-bold mb-2" style="font-size: 0.9rem;">${t.moTa || 'Không có tiêu đề'}</div>
+          <div class="d-flex align-items-center justify-content-between mt-3">
+            <div class="d-flex align-items-center gap-2">
+              <div class="bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center overflow-hidden" 
+                   style="width: 24px; height: 24px; font-size: 0.7rem; font-weight: bold; border: 1px solid var(--primary-color);">
+                ${avatarHtml}
+              </div>
+              <span class="small text-muted">${t.nguoiThucHien || '—'}</span>
+            </div>
+             <div class="small text-muted" style="font-size: 0.7rem;">
+               <i class="bi bi-clock"></i> ${t.hanChot ? formatVietnameseDate(t.hanChot) : '—'}
+             </div>
+          </div>
+        `;
+        
+        // Gắn sự kiện click để xem chi tiết
+        card.addEventListener('click', () => {
+          openTaskDetailsModal(t);
+        });
+
+        targetList.appendChild(card);
+      });
+
+      // Update counts
+      lists.forEach(l => {
+        const countEl = document.getElementById(`count-${l}`);
+        const listEl = document.getElementById(`list-${l}`);
+        if (countEl && listEl) {
+          countEl.textContent = listEl.children.length;
+        }
+      });
+    }
+
+    let taskDetailsModalInstance = null;
+
+    async function openTaskDetailsModal(task) {
+      currentEditingTask = task;
+      const perm = checkTaskPermission(task);
+      currentTaskPerm = perm;
+
+      // Reset vùng xác nhận xóa về mặc định khi mở modal
+      document.getElementById('deleteConfirmZone').classList.add('d-none');
+      document.getElementById('normalFooterLeft').classList.remove('d-none');
+      document.getElementById('normalFooterRight').classList.remove('d-none');
+
+      const form = document.getElementById('editTaskForm');
+      form.reset();
+
+      form.querySelector('[name="maNV"]').value = task.maNV || '';
+      form.querySelector('[name="moTa"]').value = task.moTa || '';
+      form.querySelector('[name="uuTien"]').value = task.uuTien || 'Trung bình';
+      form.querySelector('[name="trangThai"]').value = task.trangThai || 'Đã nhận';
+      
+      // Định dạng ngày được gán an toàn thông qua helper setDateInputValue cho Flatpickr
+      setDateInputValue(form.querySelector('[name="ngayBatDau"]'), task.ngayBatDau);
+      setDateInputValue(form.querySelector('[name="hanChot"]'), task.hanChot);
+      setDateInputValue(form.querySelector('[name="ngayXong"]'), task.ngayXong);
+
+      const tiDoVal = parseInt(task.tiDo || 0);
+      form.querySelector('[name="tiDo"]').value = tiDoVal;
+      document.getElementById('editTiDoVal').textContent = tiDoVal + '%';
+
+      // Load dự án - Ép kiểu string chuẩn để so sánh chính xác.
+      // Đảm bảo hiển thị đúng dự án ngay cả khi dự án đó không nằm trong danh sách dự án được giao của nhân viên
+      const projSelect = document.getElementById('editSelectProject');
+      const currentProjId = String(task.maDA || '').trim();
+      let projectOptions = [..._allProjects];
+      const hasProj = projectOptions.some(p => String(p.maDA).trim() === currentProjId);
+      
+      if (!hasProj && currentProjId) {
+        const origProj = (window._rawProjects || []).find(p => String(p.maDA).trim() === currentProjId);
+        if (origProj) {
+          projectOptions.push(origProj);
+        } else {
+          projectOptions.push({ maDA: currentProjId, tenDA: `Dự án #${currentProjId}` });
+        }
+      }
+      projSelect.innerHTML = projectOptions.map(p => `<option value="${String(p.maDA).trim()}">${p.tenDA} (${p.maDA})</option>`).join('');
+      projSelect.value = currentProjId;
+
+      // Load nhân viên - Ép kiểu string chuẩn để so sánh chính xác
+      const empSelect = document.getElementById('editSelectEmployee');
+      empSelect.innerHTML = _allEmployees.map(e => `<option value="${String(e.hoTen).trim()}">${e.hoTen} (${e.chucVu})</option>`).join('');
+      empSelect.value = String(task.nguoiThucHien || '').trim();
+
+      // Load file đính kèm của nhiệm vụ
+      editFilesList = [];
+      if (task.file) {
+        const fileLines = task.file.split('\n');
+        fileLines.forEach((line, index) => {
+          const val = line.trim();
+          if (val) {
+            const parts = val.split('|');
+            if (parts.length >= 2) {
+              editFilesList.push({ name: parts[0], url: parts[1] });
+            } else {
+              const urlStr = parts[0];
+              let displayName = `Tài liệu đính kèm ${index + 1}`;
+              if (urlStr.includes('drive.google.com')) {
+                displayName = `Tài liệu Drive ${index + 1}`;
+              } else {
+                try {
+                  const urlObj = new URL(urlStr);
+                  const pathParts = urlObj.pathname.split('/');
+                  const lastPart = pathParts[pathParts.length - 1];
+                  if (lastPart && lastPart.length > 3 && lastPart !== 'view' && lastPart !== 'open') {
+                    displayName = decodeURIComponent(lastPart);
+                  }
+                } catch(e) {}
+              }
+              editFilesList.push({ name: displayName, url: urlStr });
+            }
+          }
+        });
+      }
+      const canEditFile = perm.canEditAll;
+      document.getElementById('editFileInput').disabled = !canEditFile;
+      renderFilesList('edit', canEditFile);
+
+      const fieldsToToggle = [
+        form.querySelector('[name="maDA"]'),
+        form.querySelector('[name="nguoiThucHien"]'),
+        form.querySelector('[name="moTa"]'),
+        form.querySelector('[name="uuTien"]'),
+        form.querySelector('[name="ngayBatDau"]'),
+        form.querySelector('[name="hanChot"]')
+      ];
+
+      if (perm.canEditAll) {
+        fieldsToToggle.forEach(field => field.disabled = false);
+        form.querySelector('[name="trangThai"]').disabled = false;
+        form.querySelector('[name="tiDo"]').disabled = false;
+        form.querySelector('[name="ngayXong"]').disabled = false;
+        document.getElementById('editNgayXongCol').style.display = 'block';
+        document.getElementById('btnUpdateTask').style.display = 'block';
+        document.getElementById('btnDeleteTask').style.display = 'block';
+      } else if (perm.canEditProgress) {
+        fieldsToToggle.forEach(field => field.disabled = true);
+        form.querySelector('[name="trangThai"]').disabled = false;
+        form.querySelector('[name="tiDo"]').disabled = false;
+        form.querySelector('[name="ngayXong"]').disabled = true;
+        document.getElementById('editNgayXongCol').style.display = 'none';
+        document.getElementById('btnUpdateTask').style.display = 'none';
+        document.getElementById('btnDeleteTask').style.display = 'none';
+      } else {
+        fieldsToToggle.forEach(field => field.disabled = true);
+        form.querySelector('[name="trangThai"]').disabled = true;
+        form.querySelector('[name="tiDo"]').disabled = true;
+        form.querySelector('[name="ngayXong"]').disabled = true;
+        document.getElementById('editNgayXongCol').style.display = 'block';
+        document.getElementById('btnUpdateTask').style.display = 'none';
+        document.getElementById('btnDeleteTask').style.display = 'none';
+      }
+
+      if (!taskDetailsModalInstance) {
+        taskDetailsModalInstance = new bootstrap.Modal(document.getElementById('taskDetailsModal'));
+      }
+      taskDetailsModalInstance.show();
+    }
+
+    async function updateTask() {
+      const form = document.getElementById('editTaskForm');
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+
+      const btn = document.getElementById('btnUpdateTask');
+      const originalText = btn.innerHTML;
+      
+      try {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Đang lưu...`;
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+
+        // Lấy thủ công các trường bị disabled để gửi lên API
+        const maDASelect = form.querySelector('[name="maDA"]');
+        if (maDASelect && maDASelect.disabled) data.maDA = maDASelect.value;
+
+        const nguoiSelect = form.querySelector('[name="nguoiThucHien"]');
+        if (nguoiSelect && nguoiSelect.disabled) data.nguoiThucHien = nguoiSelect.value;
+
+        const moTaText = form.querySelector('[name="moTa"]');
+        if (moTaText && moTaText.disabled) data.moTa = moTaText.value;
+
+        const uuTienSelect = form.querySelector('[name="uuTien"]');
+        if (uuTienSelect && uuTienSelect.disabled) data.uuTien = uuTienSelect.value;
+
+        const ngayBDInput = form.querySelector('[name="ngayBatDau"]');
+        if (ngayBDInput && ngayBDInput.disabled) data.ngayBatDau = ngayBDInput.value;
+
+        const hanChotInput = form.querySelector('[name="hanChot"]');
+        if (hanChotInput && hanChotInput.disabled) data.hanChot = hanChotInput.value;
+
+        const trangThaiSelect = form.querySelector('[name="trangThai"]');
+        if (trangThaiSelect && trangThaiSelect.disabled) data.trangThai = trangThaiSelect.value;
+
+        const tiDoInput = form.querySelector('[name="tiDo"]');
+        if (tiDoInput && tiDoInput.disabled) data.tiDo = tiDoInput.value;
+
+        const ngayXongInput = form.querySelector('[name="ngayXong"]');
+        if (ngayXongInput && ngayXongInput.disabled) data.ngayXong = ngayXongInput.value;
+
+        // Gán kèm thông tin file đính kèm
+        data.file = document.getElementById('editFilesHidden').value;
+
+        await API.update('nhiemvu', data.maNV, data);
+        showToast("Đã cập nhật nhiệm vụ thành công!", "success");
+        
+        if (taskDetailsModalInstance) {
+          taskDetailsModalInstance.hide();
+        } else {
+          const m = bootstrap.Modal.getInstance(document.getElementById('taskDetailsModal'));
+          if (m) m.hide();
+        }
+        
+        await loadAllData();
+      } catch (err) {
+        showToast("Lỗi cập nhật nhiệm vụ: " + err.message, "danger");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
+    }
+
+    async function confirmDeleteTask() {
+      const maNV = document.querySelector('#editTaskForm [name="maNV"]').value;
+      if (!maNV) return;
+
+      const btn = document.getElementById('btnConfirmDelete');
+      const originalText = btn.innerHTML;
+
+      try {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Đang xóa...`;
+
+        await API.delete('nhiemvu', maNV);
+        showToast("Đã xóa nhiệm vụ thành công!", "success");
+        
+        if (taskDetailsModalInstance) {
+          taskDetailsModalInstance.hide();
+        } else {
+          const m = bootstrap.Modal.getInstance(document.getElementById('taskDetailsModal'));
+          if (m) m.hide();
+        }
+        
+        await loadAllData();
+      } catch (err) {
+        showToast("Lỗi khi xóa nhiệm vụ: " + err.message, "danger");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
+    }
+
+    function renderStats(tasks) {
+      const stats = {};
+      tasks.forEach(t => {
+        const user = t.nguoiThucHien || "Chưa giao";
+        if (!stats[user]) stats[user] = { total: 0, done: 0 };
+        stats[user].total++;
+        if (t.trangThai === 'Hoàn thành' || t.trangThai === 'Đã xong') stats[user].done++;
+      });
+
+      const statsEl = document.getElementById('employeeStats');
+      if (!statsEl) return;
+      statsEl.innerHTML = Object.entries(stats).map(([user, data]) => `
+        <div class="col-6 col-md-3">
+          <div class="p-2 border rounded">
+            <div class="fw-bold small mb-1">${user}</div>
+            <div class="progress" style="height: 4px;">
+              <div class="progress-bar bg-success" style="width: ${(data.done/data.total*100)}%"></div>
+            </div>
+            <div class="d-flex justify-content-between mt-1" style="font-size: 0.65rem;">
+              <span class="text-muted">HT: ${data.done}/${data.total}</span>
+              <span class="fw-bold text-success">${Math.round(data.done/data.total*100)}%</span>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function initSortable() {
+      const columns = document.querySelectorAll('.task-list');
+      columns.forEach(col => {
+        new Sortable(col, {
+          group: 'kanban',
+          animation: 150,
+          ghostClass: 'bg-light',
+          onEnd: async (evt) => {
+            const taskId = evt.item.dataset.id;
+            const newStatus = evt.to.parentElement.dataset.status;
+            
+            let taskObj = null;
+            try {
+              taskObj = _allTasks.find(t => t.maNV === taskId);
+            } catch(e) {}
+
+            const perm = checkTaskPermission(taskObj);
+            if (!perm.canEditProgress) {
+              showToast("Bạn không có quyền cập nhật trạng thái cho nhiệm vụ này!", "warning");
+              await loadAllData();
+              return;
+            }
+
+            console.log(`Updating Task ${taskId} to ${newStatus}`);
+            try {
+              await API.update('nhiemvu', taskId, { trangThai: newStatus });
+              showToast("Đã chuyển nhiệm vụ sang cột '" + newStatus + "' thành công!", "success");
+              await loadAllData();
+            } catch (err) {
+              console.error("Lỗi cập nhật trạng thái:", err);
+              showToast("Lỗi cập nhật trạng thái: " + err.message, "danger");
+              await loadAllData();
+            }
+          }
+        });
+      });
+    }
+
+    // Tự động tải file đính kèm lên Google Drive của Dự án tương ứng
+    async function handleFileUpload(event, type) {
+      const files = event.target.files;
+      if (!files.length) return;
+
+      const projSelect = document.getElementById(type === 'add' ? 'selectProject' : 'editSelectProject');
+      const maDA = projSelect ? projSelect.value.trim() : '';
+
+      if (!maDA) {
+        showToast("Vui lòng chọn Dự án trước khi tải tệp đính kèm để hệ thống xác định đúng thư mục!", "warning");
+        event.target.value = '';
+        return;
+      }
+
+      const project = _allProjects.find(p => String(p.maDA).trim() === String(maDA).trim());
+      const tenDA = project ? project.tenDA : '';
+      const namThucHien = project ? project.namThucHien : '2026';
+
+      const statusEl = document.getElementById(`${type}FileUploadStatus`);
+      statusEl.classList.remove('d-none');
+      statusEl.classList.add('d-flex');
+
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const base64Data = await convertFileToBase64(file);
+          
+          // Gọi API upload tệp lên Google Drive
+          const driveUrl = await uploadProjectFileAPI(maDA, namThucHien, tenDA, file.name, base64Data);
+          
+          const fileObj = { name: file.name, url: driveUrl };
+          if (type === 'add') {
+            addFilesList.push(fileObj);
+          } else {
+            editFilesList.push(fileObj);
+          }
+        }
+        
+        renderFilesList(type, true);
+        showToast("Đã tải tệp lên Google Drive thành công!", "success");
+      } catch (e) {
+        showToast("Lỗi tải tệp lên Drive: " + e.message, "danger");
+      } finally {
+        statusEl.classList.add('d-none');
+        statusEl.classList.remove('d-flex');
+        event.target.value = ''; // Reset file input
+      }
+    }
+
+    // Chuyển đổi File sang Base64
+    function convertFileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+      });
+    }
+
+    // Gọi API Apps Script để tải file lên Drive dự án
+    async function uploadProjectFileAPI(maDA, namThucHien, tenDA, fileName, base64Data) {
+      if (typeof apiPost !== 'undefined') {
+        return await apiPost({ action: 'upload_project_file', maDA, namThucHien, tenDA, fileName, base64Data });
+      } else {
+        const res = await fetch(SCRIPT_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify({ action: 'upload_project_file', maDA, namThucHien, tenDA, fileName, base64Data })
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+    }
+
+    // Hiển thị danh sách tệp đính kèm trong Modal
+    function renderFilesList(type, canEdit = true) {
+      const container = document.getElementById(`${type}FilesList`);
+      const hiddenInput = document.getElementById(`${type}FilesHidden`);
+      const list = type === 'add' ? addFilesList : editFilesList;
+
+      if (!list.length) {
+        container.innerHTML = '<div class="text-muted small py-2 text-center border border-dashed rounded">Chưa có tài liệu đính kèm.</div>';
+        hiddenInput.value = '';
+        return;
+      }
+
+      container.innerHTML = list.map((f, index) => {
+        const deleteBtn = canEdit ? `
+          <button type="button" class="btn btn-link text-danger p-0 m-0" onclick="deleteAttachedFile('${type}', ${index})">
+            <i class="bi bi-x-circle-fill"></i>
+          </button>
+        ` : '';
+        return `
+          <div class="d-flex align-items-center justify-content-between p-2 bg-light border rounded">
+            <a href="${f.url}" target="_blank" class="small fw-semibold text-truncate me-2" style="max-width: 80%; text-decoration: none;">
+              <i class="bi bi-file-earmark-arrow-up text-primary me-1"></i> ${f.name}
+            </a>
+            ${deleteBtn}
+          </div>
+        `;
+      }).join('');
+
+      // Gán chuỗi file phân tách bằng dấu xuống dòng để lưu vào ô Excel (chỉ lưu URL)
+      hiddenInput.value = list.map(f => f.url).join('\n');
+    }
+
+    // Xóa file đính kèm khỏi danh sách tạm thời
+    window.deleteAttachedFile = function(type, index) {
+      if (type === 'add') {
+        addFilesList.splice(index, 1);
+      } else {
+        editFilesList.splice(index, 1);
+      }
+      renderFilesList(type, true);
+    }
+  </script>
+</body>
+</html>

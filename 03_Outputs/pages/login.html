@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Đăng nhập — CPM 5.0</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #f1f5f9; height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .login-card { width: 100%; max-width: 400px; border: none; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+  </style>
+</head>
+<body>
+  <div class="card login-card p-4">
+    <div class="text-center mb-4">
+      <h3 class="fw-bold text-primary">CPM 5.0</h3>
+      <p class="text-muted small">Hệ thống Quản lý Dự án</p>
+    </div>
+
+    <!-- Chuyển đổi loại đăng nhập -->
+    <ul class="nav nav-pills nav-fill mb-3" id="loginTabs">
+      <li class="nav-item">
+        <button type="button" class="nav-link active py-1 small" id="tabStaff">👤 Nhân viên</button>
+      </li>
+      <li class="nav-item">
+        <button type="button" class="nav-link py-1 small" id="tabTVGS">🏗️ Tư vấn giám sát</button>
+      </li>
+    </ul>
+
+    <form id="loginForm">
+      <div class="mb-3">
+        <label class="form-label small fw-bold">Email</label>
+        <input type="email" class="form-control" id="email" placeholder="admin@cpm.vn" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-bold">Mật khẩu</label>
+        <input type="password" class="form-control" id="password" placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="btn btn-primary w-100 py-2 fw-bold" id="btnLogin">Đăng nhập</button>
+      <div id="loginError" class="mt-3 text-danger small text-center d-none"></div>
+    </form>
+
+    <!-- Form đăng nhập Tư vấn giám sát -->
+    <form id="loginFormTVGS" class="d-none">
+      <div class="mb-3">
+        <label class="form-label small fw-bold">Mã số doanh nghiệp hoặc Email</label>
+        <input type="text" class="form-control" id="tvgsIdentifier" placeholder="1234567890 hoặc email@congty.vn" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-bold">Mật khẩu</label>
+        <input type="password" class="form-control" id="tvgsPassword" placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="btn btn-success w-100 py-2 fw-bold" id="btnLoginTVGS">Đăng nhập Nhà thầu TVGS</button>
+      <div class="text-muted small text-center mt-2">Mật khẩu mặc định: <code>Nhathau123</code></div>
+      <div id="loginErrorTVGS" class="mt-3 text-danger small text-center d-none"></div>
+    </form>
+  </div>
+
+  <!-- Shared API Helper -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+  </script>
+  <?!= include('api'); ?>
+
+  <!-- Fallback for local testing if GAS include didn't run -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        login:  (email, password)  => apiPost({ action: 'login',  email, password }),
+        loginTVGS: (identifier, password) => apiPost({ action: 'login_tvgs', identifier, password })
+      };
+    }
+    if (typeof API !== 'undefined' && !API.loginTVGS) {
+      API.loginTVGS = (identifier, password) => apiPost({ action: 'login_tvgs', identifier, password });
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+
+  <!-- Dynamic Auth check fallback -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal 
+                ? (isIndexPage ? "pages/login.html" : "login.html") 
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+    // Chạy kiểm tra phiên làm việc ngay khi mở trang
+    // TVGS đã đăng nhập -> chuyển thẳng tới cổng TVGS, không qua index
+    (function() {
+      try {
+        const p = JSON.parse(localStorage.getItem('userProfile') || 'null');
+        if (p && p.role === 'TVGS') {
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1';
+          Auth.navigateTo(isLocal ? "tvgs.html" : SCRIPT_URL + "?page=tvgs");
+          return;
+        }
+      } catch(e) {}
+      Auth.checkAuth(true);
+    })();
+  </script>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('loginError');
+      const btn = document.getElementById('btnLogin');
+      
+      errorEl.classList.add('d-none');
+      btn.disabled = true;
+      btn.textContent = "Đang xử lý...";
+ 
+      try {
+        const data = await API.login(email, password);
+        localStorage.setItem('userProfile', JSON.stringify(data));
+        const isLocal = window.location.protocol === 'file:' || 
+                        window.location.hostname === 'localhost' || 
+                        window.location.hostname === '127.0.0.1';
+        if (isLocal) {
+          Auth.navigateTo("../index.html");
+        } else {
+          // Đính kèm token session vào URL để trang đích khôi phục localStorage
+          const token = btoa(encodeURIComponent(JSON.stringify(data)));
+          Auth.navigateTo(SCRIPT_URL + "?page=index&token=" + token);
+        }
+      } catch (err) {
+        if (err.message === "Failed to fetch") {
+          errorEl.innerHTML = "Không thể kết nối API (Failed to fetch).<br>Lưu ý:<br>1. Hãy kiểm tra xem bạn đã deploy GAS Web App với quyền <b>'Anyone' (Bất kỳ ai)</b> chưa?<br>2. Nếu đang mở file offline, trình duyệt chặn fetch từ <code>file://</code>. Bạn hãy dùng Local Web Server (như Live Server, npx serve) hoặc chạy trực tiếp link Web App trên Google.";
+        } else {
+          errorEl.textContent = err.message || "Email hoặc Mật khẩu không chính xác";
+        }
+        errorEl.classList.remove('d-none');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Đăng nhập";
+      }
+    });
+
+    // ─── Chuyển đổi tab Nhân viên / Tư vấn giám sát ───
+    const tabStaff = document.getElementById('tabStaff');
+    const tabTVGS = document.getElementById('tabTVGS');
+    tabStaff.addEventListener('click', () => {
+      tabStaff.classList.add('active');
+      tabTVGS.classList.remove('active');
+      document.getElementById('loginForm').classList.remove('d-none');
+      document.getElementById('loginFormTVGS').classList.add('d-none');
+    });
+    tabTVGS.addEventListener('click', () => {
+      tabTVGS.classList.add('active');
+      tabStaff.classList.remove('active');
+      document.getElementById('loginFormTVGS').classList.remove('d-none');
+      document.getElementById('loginForm').classList.add('d-none');
+    });
+
+    // ─── Đăng nhập Tư vấn giám sát ───
+    document.getElementById('loginFormTVGS').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const identifier = document.getElementById('tvgsIdentifier').value.trim();
+      const password = document.getElementById('tvgsPassword').value;
+      const errorEl = document.getElementById('loginErrorTVGS');
+      const btn = document.getElementById('btnLoginTVGS');
+
+      errorEl.classList.add('d-none');
+      btn.disabled = true;
+      btn.textContent = "Đang xử lý...";
+
+      try {
+        const data = await API.loginTVGS(identifier, password);
+        localStorage.setItem('userProfile', JSON.stringify(data));
+        const isLocal = window.location.protocol === 'file:' ||
+                        window.location.hostname === 'localhost' ||
+                        window.location.hostname === '127.0.0.1';
+        if (isLocal) {
+          Auth.navigateTo("tvgs.html");
+        } else {
+          const token = btoa(encodeURIComponent(JSON.stringify(data)));
+          Auth.navigateTo(SCRIPT_URL + "?page=tvgs&token=" + token);
+        }
+      } catch (err) {
+        errorEl.textContent = err.message || "Đăng nhập thất bại";
+        errorEl.classList.remove('d-none');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Đăng nhập Nhà thầu TVGS";
+      }
+    });
+  </script>
+</body>
+</html>

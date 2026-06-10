@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CPM 5.0 — Hệ thống Quản lý Dự án</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Google Charts -->
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <!-- Shared API Helper (POST-only) -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper for both Local and GAS environments -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          // Trên GAS: đính kèm token session vào URL
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal 
+                ? (isIndexPage ? "pages/login.html" : "login.html") 
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang: Kiểm tra phiên đăng nhập
+    const userProfile = Auth.checkAuth(false);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' || 
+                      window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+      
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+
+      // 1. Tự động điều chỉnh link sidebar
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top'; // Quan trọng: Thoát khỏi iframe GAS
+        }
+      });
+
+      // 2. Điền thông tin profile động vào sidebar
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+
+      // 3. Đăng ký sự kiện nút Đăng xuất
+      const btnLogout = document.getElementById('btnLogout') || document.querySelector('.btn-outline-danger');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+          e.preventDefault();
+          Auth.logout();
+        });
+      }
+    });
+  </script>
+  <style>
+  /* Tự động ẩn sidebar và header khi trang ở trong iframe */
+  @media screen {
+    html.in-iframe #sidebar,
+    html.in-iframe .top-navbar,
+    body.in-iframe #sidebar,
+    body.in-iframe .top-navbar {
+      display: none !important;
+    }
+    html.in-iframe #content,
+    body.in-iframe #content {
+      margin-left: 0 !important;
+      width: 100% !important;
+      padding: 15px !important;
+      min-height: 100vh !important;
+    }
+    html.in-iframe body,
+    body.in-iframe {
+      background-color: #f8fafc !important;
+    }
+  }
+</style>
+<script>
+// Tự động phát hiện và thêm class in-iframe
+(function() {
+  const isLocal = window.location.protocol === 'file:' || 
+                  window.location.hostname === 'localhost' || 
+                  window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+  let depth = 0;
+  let current = window;
+  while (current !== window.top && current.parent !== current) {
+    depth++;
+    current = current.parent;
+    if (depth > 10) break;
+  }
+  const isInIframe = isLocal ? (depth >= 1) : (depth >= 3);
+
+  if (isInIframe) {
+    document.documentElement.classList.add('in-iframe');
+    const addClass = () => { if (document.body) document.body.classList.add('in-iframe'); };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', addClass);
+    } else {
+      addClass();
+    }
+  }
+})();
+
+// Sử dụng URL Web App được định nghĩa toàn cục từ trang chính
+// Gán thẳng vào window (không khai báo) => miễn nhiễm lỗi "already declared"
+// kể cả khi GAS nạp script này nhiều lần hoặc tồn tại file cũ khai báo trùng
+window.API_URL = window.SCRIPT_URL;
+window.CACHE_DURATION = 60000; // 60 giây
+
+async function apiPost(body) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    body: JSON.stringify(body)
+  });
+  const json = await res.json();
+  if (json.status === 'error') throw new Error(json.message);
+  return json.data;
+}
+
+function getCache(key) {
+  try {
+    const cached = sessionStorage.getItem('cpm_cache_' + key);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    const age = Date.now() - parsed.timestamp;
+    if (age < CACHE_DURATION) {
+      return parsed.data;
+    }
+  } catch(e) {}
+  return null;
+}
+
+function setCache(key, data) {
+  try {
+    const obj = {
+      timestamp: Date.now(),
+      data: data
+    };
+    sessionStorage.setItem('cpm_cache_' + key, JSON.stringify(obj));
+  } catch(e) {}
+}
+
+function clearCache(key) {
+  try {
+    sessionStorage.removeItem('cpm_cache_' + key);
+  } catch(e) {}
+}
+
+window.API = {
+  list: async (sheet, useCache = true) => {
+    if (useCache) {
+      const cached = getCache(sheet);
+      if (cached) return cached;
+    }
+    const data = await apiPost({ action: 'list', sheet });
+    if (useCache) {
+      setCache(sheet, data);
+    }
+    return data;
+  },
+  
+  batchList: async (sheets, useCache = true) => {
+    const result = {};
+    const missingSheets = [];
+    
+    if (useCache) {
+      sheets.forEach(sheet => {
+        const cached = getCache(sheet);
+        if (cached) {
+          result[sheet] = cached;
+        } else {
+          missingSheets.push(sheet);
+        }
+      });
+    } else {
+      missingSheets.push(...sheets);
+    }
+    
+    if (missingSheets.length > 0) {
+      try {
+        const batchData = await apiPost({ action: 'batch_list', sheets: missingSheets });
+        Object.keys(batchData).forEach(sheet => {
+          result[sheet] = batchData[sheet];
+          if (useCache) {
+            setCache(sheet, batchData[sheet]);
+          }
+        });
+      } catch(err) {
+        console.error("Lỗi batchList, thực hiện fallback gọi tuần tự:", err);
+        // Fallback: gọi từng sheet riêng lẻ nếu batch bị lỗi
+        for (const sheet of missingSheets) {
+          result[sheet] = await API.list(sheet, useCache);
+        }
+      }
+    }
+    
+    return result;
+  },
+
+  get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+  
+  create: async (sheet, data) => {
+    const res = await apiPost({ action: 'create', sheet, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  update: async (sheet, id, data) => {
+    const res = await apiPost({ action: 'update', sheet, id, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  delete: async (sheet, id) => {
+    const res = await apiPost({ action: 'delete', sheet, id });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  login:  (email, password)  => apiPost({ action: 'login',  email, password }),
+
+  loginTVGS: (identifier, password) => apiPost({ action: 'login_tvgs', identifier, password }),
+
+  tvgsSync: () => apiPost({ action: 'tvgs_sync' }),
+
+  tvgsCheckNow: () => apiPost({ action: 'tvgs_check_now' }),
+
+  tvgsChangePassword: (maSoDN, oldPassword, newPassword) => apiPost({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+
+  qtInit: (maDA) => apiPost({ action: 'qt_init', maDA }),
+
+  qtLoad: (maQT) => apiPost({ action: 'qt_load', maQT }),
+
+  qtDelete: (maQT) => apiPost({ action: 'qt_delete', maQT }),
+
+  clearAllCache: () => {
+    try {
+      const keys = Object.keys(sessionStorage);
+      keys.forEach(key => {
+        if (key.indexOf('cpm_cache_') === 0) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    } catch(e) {}
+  }
+};
+
+// ─── SESSION TOKEN RECOVERY ─────────────────────────────────────────────────
+// GAS đổi iframe origin mỗi lần chuyển trang → localStorage bị xóa.
+// Giải pháp: Code.gs truyền authToken qua template, trang đích đọc và khôi phục.
+if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+  try {
+    localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN)));
+  } catch(e) {}
+}
+
+// ─── AUTH & NAVIGATION ──────────────────────────────────────────────────────
+window.Auth = {
+  navigateTo: (url) => {
+    // Không tự điều hướng khi đang ở màn hình cấp quyền OAuth của Google
+    // (sandbox chặn navigation không có thao tác người dùng -> lỗi console)
+    if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+
+    const isLocal = window.location.protocol === 'file:' ||
+                    window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+                    
+    // Trên GAS: đính kèm token session vào URL để server truyền xuống trang đích
+    if (!isLocal) {
+      const profileStr = localStorage.getItem('userProfile');
+      if (profileStr && !url.includes('token=')) {
+        const token = btoa(encodeURIComponent(profileStr));
+        url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+      }
+    }
+
+    if (isLocal) {
+      window.location.href = url;
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_top';
+      if (document.body) {
+        document.body.appendChild(link);
+      } else {
+        document.documentElement.appendChild(link);
+      }
+      link.click();
+    }
+  },
+  checkAuth: (isLoginPage = false) => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+
+    const profileStr = localStorage.getItem('userProfile');
+    let profile = null;
+    try {
+      if (profileStr) profile = JSON.parse(profileStr);
+    } catch(e) {
+      localStorage.removeItem('userProfile');
+    }
+
+    if (isLoginPage) {
+      if (profile) {
+        Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+      }
+    } else {
+      if (!profile) {
+        const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                            (!window.location.pathname.includes('/pages/'));
+        Auth.navigateTo(isLocal 
+          ? (isIndexPage ? "pages/login.html" : "login.html") 
+          : SCRIPT_URL + "?page=login");
+        return null;
+      }
+      return profile;
+    }
+  },
+  logout: () => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+    localStorage.removeItem('userProfile');
+    if (isLocal) {
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+      Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+    } else {
+      Auth.navigateTo(SCRIPT_URL + "?page=login");
+    }
+  }
+};
+</script>
+
+
+  <!-- Fallback for local testing if GAS include didn't run -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        login:  (email, password)  => apiPost({ action: 'login',  email, password })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+  
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-light);
+      overflow-x: hidden;
+    }
+
+    #sidebar {
+      width: var(--sidebar-width);
+      height: 100vh;
+      position: fixed;
+      left: 0;
+      top: 0;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-color);
+      transition: all 0.3s;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+    }
+
+    #sidebar .sidebar-header {
+      padding: 20px 24px;
+      background: var(--sidebar-bg);
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    #sidebar .nav-link {
+      color: var(--sidebar-color);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease-in-out;
+      font-weight: 500;
+    }
+
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      color: var(--sidebar-active-color) !important;
+      background: var(--sidebar-active-bg) !important;
+      border-left: 4px solid var(--primary-color);
+    }
+
+    #sidebar .nav-link i {
+      font-size: 1.1rem;
+    }
+
+    #content {
+      margin-left: var(--sidebar-width);
+      width: calc(100% - var(--sidebar-width));
+      min-height: 100vh;
+      transition: all 0.3s;
+      padding: 20px;
+    }
+
+    @media (max-width: 991.98px) {
+      #sidebar {
+        margin-left: calc(-1 * var(--sidebar-width));
+      }
+      #sidebar.active {
+        margin-left: 0;
+      }
+      #content {
+        margin-left: 0;
+        width: 100%;
+      }
+      #content.active {
+        margin-left: var(--sidebar-width);
+      }
+    }
+
+    .top-navbar {
+      display: none !important;
+    }
+
+    /* Floating toggle button for mobile */
+    .mobile-toggle {
+      display: none;
+      position: fixed;
+      top: 15px;
+      left: 15px;
+      z-index: 1050;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+      border: 1px solid rgba(0,0,0,0.08);
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .mobile-toggle:hover {
+      transform: scale(1.05);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+    }
+    @media (max-width: 991.98px) {
+      .mobile-toggle {
+        display: flex;
+      }
+    }
+
+    /* Dashboard Cards */
+    .stat-card {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      transition: transform 0.2s;
+    }
+    .stat-card:hover {
+      transform: translateY(-5px);
+    }
+  
+    /* Premium Indigo Buttons */
+    .btn-primary {
+      background: var(--primary-gradient) !important;
+      border: none !important;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+      transition: all 0.2s ease !important;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.35) !important;
+      transform: translateY(-1px);
+    }
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+    
+    /* Card headers & Table styling */
+    .card {
+      border: 1px solid var(--border-color) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02) !important;
+      overflow: hidden;
+    }
+    .table th {
+      background-color: #f8fafc !important;
+      color: #475569 !important;
+      font-weight: 600 !important;
+      font-size: 0.8rem !important;
+      text-uppercase: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    /* Custom background colors for stat-cards, filters, and charts */
+    .card-total-projects {
+      background-color: #eef2ff !important;
+      border-left: 4px solid #4f46e5 !important;
+    }
+    .card-active-tasks {
+      background-color: #fffbeb !important;
+      border-left: 4px solid #d97706 !important;
+    }
+    .card-contracts {
+      background-color: #ecfeff !important;
+      border-left: 4px solid #0891b2 !important;
+    }
+    .card-completed-tasks {
+      background-color: #f0fdf4 !important;
+      border-left: 4px solid #16a34a !important;
+    }
+    .filter-section {
+      background-color: #f5f3ff !important;
+      border: 1px solid #ddd6fe !important;
+    }
+    .chart-card-projects {
+      background-color: #faf5ff !important;
+      border: 1px solid #f3e8ff !important;
+    }
+    .chart-card-tasks {
+      background-color: #f0fdfa !important;
+      border: 1px solid #ccfbf1 !important;
+    }
+    
+    /* ─── Notification Styling ─── */
+    .notification-item {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      transition: background-color 0.2s ease;
+      cursor: pointer;
+      position: relative;
+    }
+    .notification-item:hover {
+      background-color: #f8fafc;
+    }
+    .notification-item.unread {
+      background-color: #f0f5ff;
+    }
+    .notification-item.unread::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background-color: var(--primary-color);
+    }
+    .notification-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 1.1rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Mobile Sidebar Toggle -->
+  <button type="button" id="mobileSidebarToggle" class="mobile-toggle">
+    <i class="bi bi-list fs-5"></i>
+  </button>
+
+        <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span class="fw-bold">CPM 5.0</span>
+      <div class="d-flex align-items-center gap-2">
+        <!-- Bell Icon Button -->
+        <button class="btn btn-link text-dark position-relative p-1 border-0" id="btnNotification" type="button" data-bs-toggle="offcanvas" data-bs-target="#notificationOffcanvas" aria-controls="notificationOffcanvas" title="Thông báo hệ thống">
+          <i class="bi bi-bell fs-5"></i>
+          <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="notificationBadge" style="display: none; font-size: 0.65rem; padding: 0.25em 0.4em;">
+            0
+          </span>
+        </button>
+        <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>
+    
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link active">
+        <i class="bi bi-speedometer2"></i>
+        <span>Tổng quan</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link ">
+        <i class="bi bi-briefcase"></i>
+        <span>Dự án</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link ">
+        <i class="bi bi-list-task"></i>
+        <span>Nhiệm vụ</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link ">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>Hợp đồng</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link ">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Sơ đồ Gantt</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link ">
+        <i class="bi bi-people"></i>
+        <span>Nhân viên</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link ">
+        <i class="bi bi-building"></i>
+        <span>Nhà thầu</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link ">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Tư vấn giám sát</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link ">
+        <i class="bi bi-journal-richtext"></i>
+        <span>Báo cáo ngày</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link ">
+        <i class="bi bi-calculator"></i>
+        <span>Quyết toán DAHT</span>
+      </a>
+    </div>
+
+    <!-- Hỗ trợ kỹ thuật -->
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <!-- Zalo -->
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Zalo hỗ trợ">
+            <i class="bi bi-chat-dots-fill fs-6"></i>
+          </a>
+          <!-- Gmail -->
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Gửi Email">
+            <i class="bi bi-envelope-fill fs-6"></i>
+          </a>
+          <!-- Youtube -->
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s; background-color: #ff0000 !important;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Kênh Youtube">
+            <i class="bi bi-youtube fs-6"></i>
+          </a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+
+    <!-- Profile (Footer) -->
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">
+            A
+          </div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+    
+    <!-- Top Navbar -->
+    <div class="top-navbar d-flex align-items-center justify-content-between">
+      <button type="button" id="sidebarCollapse" class="btn btn-light">
+        <i class="bi bi-list fs-4"></i>
+      </button>
+      
+      <div class="d-flex align-items-center gap-3">
+        <div class="dropdown">
+          <button class="btn btn-link text-dark position-relative p-1" data-bs-toggle="dropdown">
+            <i class="bi bi-bell fs-5"></i>
+            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size: 0.6rem;">
+              3
+            </span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="width: 300px;">
+            <li class="p-3 border-bottom fw-bold">Thông báo</li>
+            <li><a class="dropdown-item p-3" href="#">Dự án A sắp đến hạn</a></li>
+            <li><a class="dropdown-item p-3" href="#">Bạn được giao nhiệm vụ mới</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-center text-primary" href="#">Xem tất cả</a></li>
+          </ul>
+        </div>
+        <button class="btn btn-outline-danger btn-sm">Đăng xuất</button>
+      </div>
+    </div>
+
+    <!-- Main View Area -->
+    <div id="mainView">
+      
+      <!-- Filters Section -->
+      <div class="card filter-section border-0 shadow-sm p-3 mb-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-12 col-md-auto">
+            <label class="form-label small fw-bold mb-1">Năm thực hiện</label>
+            <select id="filterYear" class="form-select form-select-sm">
+              <option value="all" selected>Tất cả</option>
+              <option value="2024">2024</option>
+              <option value="2025">2025</option>
+              <option value="2026">2026</option>
+            </select>
+          </div>
+          <div class="col-12 col-md-auto">
+            <label class="form-label small fw-bold mb-1">Trạng thái dự án</label>
+            <select id="filterStatus" class="form-select form-select-sm">
+              <option value="all" selected>Tất cả</option>
+              <option value="Đang thực hiện">Đang thực hiện</option>
+              <option value="Đã hoàn thành">Đã hoàn thành</option>
+              <option value="Tạm dừng">Tạm dừng</option>
+              <option value="Đã hủy">Đã hủy</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stat Cards -->
+      <div class="row g-4 mb-4">
+        <div class="col-12 col-sm-6 col-xl-3">
+          <div class="card stat-card card-total-projects p-3">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <div class="text-muted small fw-bold">TỔNG DỰ ÁN</div>
+              <i class="bi bi-briefcase text-primary fs-4"></i>
+            </div>
+            <div class="h3 fw-bold" id="totalProjects">0</div>
+          </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+          <div class="card stat-card card-active-tasks p-3">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <div class="text-muted small fw-bold">NHIỆM VỤ ĐANG LÀM</div>
+              <i class="bi bi-list-task text-warning fs-4"></i>
+            </div>
+            <div class="h3 fw-bold" id="activeTasks">0</div>
+          </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+          <div class="card stat-card card-contracts p-3">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <div class="text-muted small fw-bold">HỢP ĐỒNG</div>
+              <i class="bi bi-file-earmark-text text-info fs-4"></i>
+            </div>
+            <div class="h3 fw-bold" id="totalContracts">0</div>
+          </div>
+        </div>
+        <div class="col-12 col-sm-6 col-xl-3">
+          <div class="card stat-card card-completed-tasks p-3">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <div class="text-muted small fw-bold">NHIỆM VỤ HOÀN THÀNH</div>
+              <i class="bi bi-check-circle text-success fs-4"></i>
+            </div>
+            <div class="h3 fw-bold" id="completedTasks">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <div class="row g-4 mb-4">
+        <div class="col-12 col-lg-8">
+          <div class="card chart-card-projects border-0 shadow-sm p-4 h-100">
+            <h6 class="fw-bold mb-4">Thống kê số lượng Dự án theo loại</h6>
+            <div id="project_bar_chart" style="width: 100%; height: 300px;"></div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-4">
+          <div class="card chart-card-tasks border-0 shadow-sm p-4 h-100">
+            <h6 class="fw-bold mb-4">Trạng thái Nhiệm vụ</h6>
+            <div id="task_pie_chart" style="width: 100%; height: 300px;"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+    let depth = 0;
+    let current = window;
+    while (current !== window.top && current.parent !== current) {
+      depth++;
+      current = current.parent;
+      if (depth > 10) break;
+    }
+    const isIframe = isLocal ? (depth >= 1) : (depth >= 3);
+
+    if (!isIframe) {
+      // ─── CHẠY DƯỚI VAI TRÒ SHELL CONTAINER (TRANG CHỦ CHÍNH) ──────────────────
+      document.addEventListener('DOMContentLoaded', () => {
+        // 1. Ẩn Dashboard gốc của Shell
+        const mainView = document.getElementById('mainView');
+        if (mainView) mainView.style.display = 'none';
+
+        // 2. Tạo Iframe Container chứa các tab
+        const contentArea = document.getElementById('content');
+        if (contentArea) {
+          const iframeContainer = document.createElement('div');
+          iframeContainer.id = 'iframe-container';
+          iframeContainer.style.width = '100%';
+          iframeContainer.style.height = 'calc(100vh - 40px)'; // Tối ưu chiều cao khi ẩn top navbar
+          iframeContainer.style.position = 'relative';
+          iframeContainer.style.overflow = 'hidden';
+          contentArea.appendChild(iframeContainer);
+        }
+
+        // 3. Khởi chạy nút toggle sidebar của Shell
+        setupSidebar();
+
+        // 4. Lắng nghe click sidebar để chặn reload và chuyển sang switchTab
+        document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+          link.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            if (!href || href === '#' || href.includes('javascript:')) return;
+
+            const match = href.match(/[?&]page=([^&]+)/);
+            let page = '';
+            if (match) {
+              page = match[1];
+            } else {
+              const fileMatch = href.match(/\/([^\/]+)\.html/);
+              if (fileMatch) page = fileMatch[1];
+            }
+
+            if (page) {
+              e.preventDefault();
+              switchTab(page);
+            }
+          });
+        });
+
+        // 5. Mở tab đang làm việc gần nhất hoặc mặc định là index (Tổng quan)
+        const lastTab = sessionStorage.getItem('current_active_tab') || 'index';
+        switchTab(lastTab);
+
+        // 6. Khởi chạy hệ thống thông báo
+        initNotifications();
+      });
+
+      // Hàm chuyển tab
+      function switchTab(page) {
+        if (page === 'dashboard') page = 'index';
+
+        // Cập nhật class active trong sidebar của Shell
+        document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+          const href = link.getAttribute('href');
+          const match = href && href.match(/[?&]page=([^&]+)/);
+          const fileMatch = href && href.match(/\/([^\/]+)\.html/);
+          const linkPage = (match && match[1]) || (fileMatch && fileMatch[1]) || '';
+
+          if (linkPage === page || (page === 'index' && linkPage === 'index')) {
+            link.classList.add('active');
+          } else {
+            link.classList.remove('active');
+          }
+        });
+
+        const container = document.getElementById('iframe-container');
+        if (!container) return;
+
+        // Ẩn tất cả các iframe
+        document.querySelectorAll('.app-iframe').forEach(iframe => {
+          iframe.style.display = 'none';
+        });
+
+        // Lấy hoặc tạo iframe cho tab này
+        const iframeId = 'iframe-' + page;
+        let iframe = document.getElementById(iframeId);
+        if (!iframe) {
+          iframe = document.createElement('iframe');
+          iframe.id = iframeId;
+          iframe.name = 'cpm-tab-iframe';
+          iframe.className = 'app-iframe';
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          iframe.style.border = 'none';
+          iframe.style.display = 'none';
+          iframe.src = 'about:blank';
+          container.appendChild(iframe);
+        }
+
+        // Hiển thị iframe
+        iframe.style.display = 'block';
+
+        // Lazy load src
+        if (iframe.src === 'about:blank' || !iframe.getAttribute('data-loaded')) {
+          iframe.src = getTabUrl(page);
+          iframe.setAttribute('data-loaded', 'true');
+        }
+
+        // Lưu trạng thái hoạt động
+        sessionStorage.setItem('current_active_tab', page);
+
+        // Đóng sidebar trên mobile
+        const sidebar = document.getElementById('sidebar');
+        const content = document.getElementById('content');
+        if (sidebar && sidebar.classList.contains('active')) {
+          sidebar.classList.remove('active');
+          content.classList.remove('active');
+        }
+      }
+
+      function getTabUrl(page) {
+        const isLocal = window.location.protocol === 'file:' || 
+                        window.location.hostname === 'localhost' || 
+                        window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+        if (isLocal) {
+          if (page === 'index') {
+            return 'index.html?iframe=true';
+          }
+          return 'pages/' + page + '.html?iframe=true';
+        } else {
+          return SCRIPT_URL + "?page=" + page + "&iframe=true";
+        }
+      }
+
+    } else {
+      // ─── CHẠY DƯỚI VAI TRÒ TRANG CON DASHBOARD (TRONG IFRAME) ────────────────
+      // Load Google Charts
+      google.charts.load('current', {'packages':['corechart', 'bar']});
+      google.charts.setOnLoadCallback(initDashboard);
+    }
+
+    let allData = { projects: [], tasks: [], contracts: [] };
+
+    async function initDashboard() {
+      // Setup Sidebar logic
+      setupSidebar();
+      
+      // Load initial data
+      await refreshData();
+      
+      // Set default filters and apply automatically
+      document.getElementById('filterYear').addEventListener('change', updateDashboardUI);
+      document.getElementById('filterStatus').addEventListener('change', updateDashboardUI);
+    }
+
+    async function refreshData() {
+      try {
+        const batchData = await API.batchList(['duan', 'nhiemvu', 'hopdong']).catch(err => {
+          console.warn("Lỗi tải Batch dữ liệu Dashboard, thực hiện gọi từng phần:", err);
+          return {};
+        });
+
+        allData.projects  = batchData.duan || [];
+        allData.tasks     = batchData.nhiemvu || [];
+        allData.contracts = batchData.hopdong || [];
+
+        // PHÂN QUYỀN: Lọc dữ liệu hiển thị cho nhân viên thường
+        const isManager = userProfile && (
+          (userProfile.role && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.role)) ||
+          (userProfile.chucVu && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.chucVu))
+        );
+
+        if (!isManager && userProfile && userProfile.hoTen) {
+          const hoTenClean = userProfile.hoTen.trim().toLowerCase();
+          
+          // Lọc dự án được giao
+          allData.projects = allData.projects.filter(p => {
+            const phuTrachKT = String(p.phuTrachKT || '').trim().toLowerCase();
+            const phuTrachKeToan = String(p.phuTrachKeToan || '').trim().toLowerCase();
+            return phuTrachKT.includes(hoTenClean) || phuTrachKeToan.includes(hoTenClean) || hoTenClean.includes(phuTrachKT) || hoTenClean.includes(phuTrachKeToan);
+          });
+
+          // Lọc nhiệm vụ được giao
+          allData.tasks = allData.tasks.filter(t => {
+            const nguoiThucHien = String(t.nguoiThucHien || '').trim().toLowerCase();
+            return nguoiThucHien === hoTenClean;
+          });
+
+          // Lọc hợp đồng thuộc các dự án được giao
+          const projIds = new Set(allData.projects.map(p => p.maDA));
+          allData.contracts = allData.contracts.filter(c => projIds.has(c.maDA));
+        }
+
+        updateDashboardUI();
+      } catch (err) {
+        console.error("Lỗi nghiêm trọng khi tải dữ liệu Dashboard:", err);
+      }
+    }
+
+    function updateDashboardUI() {
+      const year = document.getElementById('filterYear').value;
+      const status = document.getElementById('filterStatus').value;
+
+      // Lọc dữ liệu Dự án
+      let filteredProjects = allData.projects;
+      if (year !== 'all') filteredProjects = filteredProjects.filter(p => p.namThucHien == year);
+      if (status !== 'all') filteredProjects = filteredProjects.filter(p => p.trangThai === status);
+
+      // Cập nhật Stat Cards
+      document.getElementById('totalProjects').textContent = filteredProjects.length;
+      document.getElementById('totalContracts').textContent = allData.contracts.filter(c => 
+        filteredProjects.some(p => p.maDA === c.maDA)
+      ).length;
+      
+      const filteredTasks = allData.tasks.filter(t => 
+        filteredProjects.some(p => p.maDA === t.maDA)
+      );
+      const activeStatuses = ['Đã nhận', 'Gia hạn', 'Trễ', 'Cần làm', 'Đang làm', 'Đang thực hiện', 'Trễ hạn'];
+      const completedStatuses = ['Hoàn thành', 'Đã xong'];
+      document.getElementById('activeTasks').textContent = filteredTasks.filter(t => activeStatuses.includes(t.trangThai)).length;
+      document.getElementById('completedTasks').textContent = filteredTasks.filter(t => completedStatuses.includes(t.trangThai)).length;
+
+      // Vẽ biểu đồ
+      drawProjectBarChart(filteredProjects);
+      drawTaskPieChart(filteredTasks);
+    }
+
+    function drawProjectBarChart(data) {
+      const container = document.getElementById('project_bar_chart');
+      if (!data || data.length === 0) {
+        container.innerHTML = '<div class="d-flex align-items-center justify-content-center text-muted fs-6" style="height: 300px;"><i class="bi bi-bar-chart-line me-2"></i>Chưa có dữ liệu dự án</div>';
+        return;
+      }
+
+      const types = {};
+      data.forEach(p => {
+        const type = p.loaiDA || "Khác";
+        types[type] = (types[type] || 0) + 1;
+      });
+
+      const chartData = google.visualization.arrayToDataTable([
+        ['Loại dự án', 'Số lượng', { role: 'style' }],
+        ...Object.entries(types).map(([k, v]) => [k, v, '#0d6efd'])
+      ]);
+
+      const options = {
+        legend: { position: 'none' },
+        chartArea: { width: '80%', height: '70%' },
+        vAxis: { minValue: 0 },
+        backgroundColor: 'transparent'
+      };
+
+      const chart = new google.visualization.ColumnChart(container);
+      chart.draw(chartData, options);
+    }
+
+    function drawTaskPieChart(data) {
+      const container = document.getElementById('task_pie_chart');
+      if (!data || data.length === 0) {
+        container.innerHTML = '<div class="d-flex align-items-center justify-content-center text-muted fs-6" style="height: 300px;"><i class="bi bi-pie-chart me-2"></i>Chưa có dữ liệu nhiệm vụ</div>';
+        return;
+      }
+
+      const states = {};
+      data.forEach(t => {
+        const state = t.trangThai || "Chưa bắt đầu";
+        states[state] = (states[state] || 0) + 1;
+      });
+
+      const chartData = google.visualization.arrayToDataTable([
+        ['Trạng thái', 'Số lượng'],
+        ...Object.entries(states)
+      ]);
+
+      const options = {
+        pieHole: 0.4,
+        slices: {
+          'Đã nhận': { color: '#f5c2c7' },
+          'Cần làm': { color: '#f5c2c7' },
+          'Đang làm': { color: '#f5c2c7' },
+          'Đang thực hiện': { color: '#f5c2c7' },
+          'Chưa bắt đầu': { color: '#f5c2c7' },
+          'Hoàn thành': { color: '#0f5132' },
+          'Đã xong': { color: '#0f5132' },
+          'Trễ': { color: '#ffc107' },
+          'Trễ hạn': { color: '#ffc107' },
+          'Không hoàn thành': { color: '#5c3a21' },
+          'Hủy': { color: '#dc3545' },
+          'Gia hạn': { color: '#6c757d' }
+        },
+        chartArea: { width: '90%', height: '80%' },
+        backgroundColor: 'transparent'
+      };
+
+      const chart = new google.visualization.PieChart(container);
+      chart.draw(chartData, options);
+    }
+
+    function setupSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const content = document.getElementById('content');
+      const toggleBtn = document.getElementById('sidebarCollapse');
+      const mobileToggle = document.getElementById('mobileSidebarToggle');
+      const closeMobileBtn = document.getElementById('sidebarCollapseMobile');
+
+      const toggleActive = () => {
+        if (sidebar) sidebar.classList.toggle('active');
+        if (content) content.classList.toggle('active');
+      };
+
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', toggleActive);
+      }
+      if (mobileToggle) {
+        mobileToggle.addEventListener('click', toggleActive);
+      }
+      if (closeMobileBtn) {
+        closeMobileBtn.addEventListener('click', () => {
+          if (sidebar) sidebar.classList.remove('active');
+          if (content) content.classList.remove('active');
+        });
+      }
+    }
+
+    // ─── NOTIFICATION ENGINE ──────────────────────────────────────────────────
+    let notificationData = [];
+
+    function initNotifications() {
+      const btnMarkAll = document.getElementById('btnMarkAllRead');
+      if (btnMarkAll) {
+        btnMarkAll.addEventListener('click', markAllNotificationsRead);
+      }
+      loadNotifications();
+      
+      // Đăng ký nhận message từ các trang con (iframe) để cập nhật lại thông báo khi cần
+      window.addEventListener('message', (event) => {
+        if (event.data === 'reload_notifications') {
+          loadNotifications();
+        }
+      });
+      
+      // Tự động quét cập nhật sau mỗi 5 phút
+      setInterval(loadNotifications, 300000);
+    }
+
+    async function loadNotifications() {
+      if (!userProfile) return;
+      
+      try {
+        const batchData = await API.batchList(['duan', 'nhiemvu', 'hopdong', 'thongbao'], false);
+        const projects = batchData.duan || [];
+        const tasks = batchData.nhiemvu || [];
+        const contracts = batchData.hopdong || [];
+        const systemNotifs = batchData.thongbao || [];
+        
+        const listEl = document.getElementById('notificationList');
+        const badgeEl = document.getElementById('notificationBadge');
+        const summaryEl = document.getElementById('notificationSummary');
+        
+        if (!listEl) return;
+        
+        let notifs = [];
+        const today = new Date('2026-05-23');
+        const readIds = JSON.parse(localStorage.getItem('cpm_read_notifications') || '[]');
+
+        const isManager = (userProfile.role && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.role)) ||
+                          (userProfile.chucVu && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.chucVu));
+        const hoTenClean = (userProfile.hoTen || '').trim().toLowerCase();
+
+        // 1. Phân tích Nhiệm vụ (Trễ hạn & Mới giao)
+        tasks.forEach(t => {
+          const isAssignedToMe = String(t.nguoiThucHien || '').trim().toLowerCase() === hoTenClean;
+          
+          if (t.trangThai !== 'Đã xong' && t.trangThai !== 'Đã hoàn thành' && t.hanChot) {
+            const dueDate = new Date(t.hanChot);
+            if (dueDate < today) {
+              if (isManager || isAssignedToMe) {
+                notifs.push({
+                  id: `overdue-task-${t.maNV}`,
+                  title: 'Nhiệm vụ trễ hạn',
+                  content: `Nhiệm vụ "${t.moTa || t.maNV}" (${t.nguoiThucHien || 'chưa phân công'}) đã trễ hạn chót (${t.hanChot}).`,
+                  time: t.hanChot,
+                  type: 'danger',
+                  icon: 'bi-exclamation-triangle-fill',
+                  targetPage: 'tasks'
+                });
+              }
+            }
+          }
+          
+          if (isAssignedToMe && (t.trangThai === 'Cần làm' || t.trangThai === 'Chưa bắt đầu' || t.trangThai === 'Đang làm' || t.trangThai === 'Đang thực hiện')) {
+            if (t.ngayBatDau) {
+              const startDate = new Date(t.ngayBatDau);
+              const diffDays = (today - startDate) / (1000 * 60 * 60 * 24);
+              if (diffDays >= 0 && diffDays <= 30) {
+                notifs.push({
+                  id: `new-task-${t.maNV}`,
+                  title: 'Nhiệm vụ mới được giao',
+                  content: `Bạn được giao nhiệm vụ: "${t.moTa || t.maNV}" (Dự án: ${t.tenDA || t.maDA}).`,
+                  time: t.ngayBatDau,
+                  type: 'primary',
+                  icon: 'bi-list-check',
+                  targetPage: 'tasks'
+                });
+              }
+            }
+          }
+        });
+
+        // 2. Phân tích Dự án (Chậm tiến độ & Mới thêm)
+        projects.forEach(p => {
+          const isMyProj = isManager || 
+            String(p.phuTrachKT || '').trim().toLowerCase().includes(hoTenClean) ||
+            String(p.phuTrachKeToan || '').trim().toLowerCase().includes(hoTenClean);
+
+          if (isMyProj) {
+            if (p.trangThai !== 'Hoàn thành' && p.trangThai !== 'Đã xong' && p.ngayBatDau && p.ngayKetThuc) {
+              const startDate = new Date(p.ngayBatDau);
+              const endDate = new Date(p.ngayKetThuc);
+              const totalDays = endDate - startDate;
+              const elapsedDays = today - startDate;
+              const progressTimeRatio = totalDays > 0 ? (elapsedDays / totalDays) : 0;
+              const progress = parseFloat(p.tiDo || 0);
+
+              if ((progressTimeRatio > 0.6 && progress < 40) || (today > endDate && progress < 100)) {
+                notifs.push({
+                  id: `slow-project-${p.maDA}`,
+                  title: 'Dự án chậm tiến độ',
+                  content: `Dự án "${p.tenDA}" đạt ${progress}% tiến độ, tiến độ thực tế chậm so với mốc thời gian.`,
+                  time: p.ngayKetThuc,
+                  type: 'warning',
+                  icon: 'bi-clock-history',
+                  targetPage: 'projects'
+                });
+              }
+            }
+
+            if (p.ngayBatDau) {
+              const startDate = new Date(p.ngayBatDau);
+              const diffDays = (today - startDate) / (1000 * 60 * 60 * 24);
+              if (diffDays >= 0 && diffDays <= 30) {
+                notifs.push({
+                  id: `new-project-${p.maDA}`,
+                  title: 'Dự án mới',
+                  content: `Dự án "${p.tenDA}" (#${p.maDA}) vừa được khởi tạo thành công.`,
+                  time: p.ngayBatDau,
+                  type: 'success',
+                  icon: 'bi-folder-plus',
+                  targetPage: 'projects'
+                });
+              }
+            }
+          }
+        });
+
+        // 3. Phân tích Hợp đồng mới (trong 30 ngày)
+        contracts.forEach(c => {
+          const isMyContract = isManager || projects.some(p => p.maDA === c.maDA);
+          if (isMyContract && c.ngayKy) {
+            const signDate = new Date(c.ngayKy);
+            const diffDays = (today - signDate) / (1000 * 60 * 60 * 24);
+            if (diffDays >= 0 && diffDays <= 30) {
+              notifs.push({
+                id: `new-contract-${c.maHD}`,
+                title: 'Hợp đồng mới',
+                content: `Hợp đồng "${c.tenHD}" (#${c.maHD}) ký kết với nhà thầu "${c.nhaThau || '—'}".`,
+                time: c.ngayKy,
+                type: 'info',
+                icon: 'bi-file-earmark-plus-fill',
+                targetPage: 'contracts'
+              });
+            }
+          }
+        });
+
+        // 4. Thông báo từ hệ thống (Sheet Thông báo)
+        systemNotifs.forEach(n => {
+          const target = String(n.nguoiNhan || '').trim().toLowerCase();
+          const isTargetedMe = target === hoTenClean || target === 'tất cả' || target === '';
+          if (isTargetedMe) {
+            const isRead = String(n.daDoc || '').trim().toLowerCase() === 'đã đọc' || n.daDoc === true;
+            notifs.push({
+              id: `sheet-${n.maTB}`,
+              title: n.tieuDe || 'Thông báo hệ thống',
+              content: n.noiDung || '',
+              time: n.thoiGian || 'Gần đây',
+              type: n.loai || 'secondary',
+              icon: n.loai === 'danger' ? 'bi-exclamation-circle-fill' : 'bi-info-circle-fill',
+              isSheet: true,
+              isRead: isRead,
+              targetPage: 'index'
+            });
+          }
+        });
+
+        notifs.sort((a, b) => {
+          const dateA = a.time ? new Date(a.time) : new Date(0);
+          const dateB = b.time ? new Date(b.time) : new Date(0);
+          return dateB - dateA;
+        });
+
+        notifs.forEach(n => {
+          if (!n.isSheet) {
+            n.isRead = readIds.includes(n.id);
+          }
+        });
+
+        notificationData = notifs;
+        const unreadCount = notifs.filter(n => !n.isRead).length;
+
+        if (unreadCount > 0) {
+          if (badgeEl) {
+            badgeEl.textContent = unreadCount;
+            badgeEl.style.display = 'inline-block';
+          }
+        } else {
+          if (badgeEl) badgeEl.style.display = 'none';
+        }
+
+        if (summaryEl) {
+          summaryEl.textContent = `${unreadCount} thông báo chưa đọc`;
+        }
+
+        if (notifs.length === 0) {
+          listEl.innerHTML = `
+            <div class="p-5 text-center text-muted">
+              <i class="bi bi-bell-slash fs-1 d-block mb-3 text-secondary" style="opacity: 0.5;"></i>
+              <div class="small fw-semibold">Không có thông báo nào</div>
+            </div>
+          `;
+          return;
+        }
+
+        listEl.innerHTML = notifs.map(n => {
+          const itemClass = n.isRead ? 'notification-item' : 'notification-item unread';
+          const iconBg = `bg-${n.type}-subtle text-${n.type}`;
+          const formattedDate = n.time ? n.time.substring(0, 10).split('-').reverse().join('/') : '';
+          
+          return `
+            <div class="${itemClass}" onclick="clickNotification('${n.id}', '${n.targetPage}')">
+              <div class="d-flex gap-3">
+                <div class="notification-icon ${iconBg}">
+                  <i class="bi ${n.icon}"></i>
+                </div>
+                <div class="flex-grow-1 min-w-0">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h6 class="fw-bold text-dark small mb-0 text-truncate" style="max-width: 80%;">${n.title}</h6>
+                    <span class="text-muted" style="font-size: 0.7rem;">${formattedDate}</span>
+                  </div>
+                  <p class="text-secondary small mb-0 text-wrap">${n.content}</p>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+      } catch (err) {
+        console.error("Lỗi khi tải hoặc xử lý thông báo:", err);
+        const listEl = document.getElementById('notificationList');
+        if (listEl) {
+          listEl.innerHTML = `<div class="p-4 text-center text-danger small">Lỗi tải thông báo: ${err.message}</div>`;
+        }
+      }
+    }
+
+    async function clickNotification(id, page) {
+      try {
+        if (id.startsWith('sheet-')) {
+          const rawId = id.replace('sheet-', '');
+          await API.update('thongbao', rawId, { daDoc: 'Đã đọc' });
+        } else {
+          const readIds = JSON.parse(localStorage.getItem('cpm_read_notifications') || '[]');
+          if (!readIds.includes(id)) {
+            readIds.push(id);
+            localStorage.setItem('cpm_read_notifications', JSON.stringify(readIds));
+          }
+        }
+        
+        loadNotifications();
+        
+        const offcanvasEl = document.getElementById('notificationOffcanvas');
+        if (offcanvasEl) {
+          const instance = bootstrap.Offcanvas.getInstance(offcanvasEl);
+          if (instance) instance.hide();
+        }
+        
+        if (page && page !== 'index') {
+          switchTab(page);
+        }
+      } catch (err) {
+        console.error("Lỗi khi xử lý click thông báo:", err);
+      }
+    }
+
+    async function markAllNotificationsRead() {
+      try {
+        const readIds = JSON.parse(localStorage.getItem('cpm_read_notifications') || '[]');
+        
+        notificationData.forEach(n => {
+          if (!n.isSheet && !readIds.includes(n.id)) {
+            readIds.push(n.id);
+          }
+        });
+        localStorage.setItem('cpm_read_notifications', JSON.stringify(readIds));
+        
+        const unreadSheets = notificationData.filter(n => n.isSheet && !n.isRead);
+        for (const n of unreadSheets) {
+          const rawId = n.id.replace('sheet-', '');
+          await API.update('thongbao', rawId, { daDoc: 'Đã đọc' });
+        }
+        
+        loadNotifications();
+      } catch (err) {
+        console.error("Lỗi đánh dấu đã đọc tất cả:", err);
+      }
+    }
+  </script>
+
+  <!-- Notification Offcanvas -->
+  <div class="offcanvas offcanvas-start" tabindex="-1" id="notificationOffcanvas" aria-labelledby="notificationOffcanvasLabel" style="width: 380px;">
+    <div class="offcanvas-header border-bottom py-3 bg-light">
+      <h5 class="offcanvas-title fw-bold text-dark d-flex align-items-center gap-2" id="notificationOffcanvasLabel">
+        <i class="bi bi-bell-fill text-primary"></i> Thông báo hệ thống
+      </h5>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body p-0">
+      <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-white sticky-top">
+        <span class="text-muted small" id="notificationSummary">Đang tải...</span>
+        <button class="btn btn-link btn-sm text-primary p-0 text-decoration-none fw-semibold" id="btnMarkAllRead" style="font-size: 0.8rem;">Đánh dấu đã đọc tất cả</button>
+      </div>
+      <div id="notificationList" class="divide-y" style="max-height: calc(100vh - 120px); overflow-y: auto;">
+        <div class="p-4 text-center text-muted">
+          <div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div>
+          <div>Đang tải thông báo...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

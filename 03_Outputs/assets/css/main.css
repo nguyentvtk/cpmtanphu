@@ -1,0 +1,71 @@
+/* ============================================================
+   CPM 5.0 — Main Stylesheet
+   Layer: 03_Outputs/assets/css
+   ============================================================ */
+
+/* ─── Base ─────────────────────────────────────────────────── */
+body {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+}
+
+.main-content {
+  padding-bottom: 2rem;
+}
+
+/* ─── KPI Cards ─────────────────────────────────────────────── */
+.kpi-icon {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kpi-value {
+  line-height: 1;
+  color: var(--bs-body-color);
+}
+
+/* ─── Avatar ─────────────────────────────────────────────────── */
+.avatar-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* ─── Progress Bar Custom ─────────────────────────────────── */
+.progress { height: 6px; border-radius: 3px; }
+
+/* ─── Table ─────────────────────────────────────────────────── */
+.table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-secondary-color);
+}
+
+/* ─── Cards ──────────────────────────────────────────────────── */
+.card { border-radius: 0.75rem; transition: box-shadow 0.2s ease; }
+.card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important; }
+
+/* ─── Badge Status ───────────────────────────────────────────── */
+.badge-status {
+  font-size: 0.7rem;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .main-content { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .kpi-value    { font-size: 1.5rem !important; }
+}

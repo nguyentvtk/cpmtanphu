@@ -1,0 +1,3376 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản lý Hợp đồng — CPM 5.0</title>
+
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Flatpickr CSS & JS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/vn.js"></script>
+  <!-- SheetJS for Excel Import/Export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Shared API Helper -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper for both Local and GAS environments -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' ||
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' ||
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch (e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal
+                ? (isIndexPage ? "pages/login.html" : "login.html")
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' ||
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') ||
+              (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang: Kiểm tra phiên đăng nhập
+    const userProfile = Auth.checkAuth(false);
+
+    // PHÂN QUYỀN: Xác định quyền quản lý
+    const isManager = userProfile && (
+      (userProfile.role && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.role)) ||
+      (userProfile.chucVu && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.chucVu))
+    );
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' ||
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+
+      const isIndexPage = window.location.pathname.endsWith('index.html') ||
+        (!window.location.pathname.includes('/pages/'));
+
+      // 1. Tự động điều chỉnh link sidebar
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top'; // Quan trọng: Thoát khỏi iframe GAS
+        }
+      });
+
+      // 2. Điền thông tin profile động vào sidebar
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+
+      // 3. Đăng ký sự kiện nút Đăng xuất
+      const btnLogout = document.getElementById('btnLogout') || document.querySelector('.btn-outline-danger');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+          e.preventDefault();
+          Auth.logout();
+        });
+      }
+    });
+  </script>
+  <style>
+  /* Tự động ẩn sidebar và header khi trang ở trong iframe */
+  @media screen {
+    html.in-iframe #sidebar,
+    html.in-iframe .top-navbar,
+    body.in-iframe #sidebar,
+    body.in-iframe .top-navbar {
+      display: none !important;
+    }
+    html.in-iframe #content,
+    body.in-iframe #content {
+      margin-left: 0 !important;
+      width: 100% !important;
+      padding: 15px !important;
+      min-height: 100vh !important;
+    }
+    html.in-iframe body,
+    body.in-iframe {
+      background-color: #f8fafc !important;
+    }
+  }
+</style>
+<script>
+// Tự động phát hiện và thêm class in-iframe
+(function() {
+  const isLocal = window.location.protocol === 'file:' || 
+                  window.location.hostname === 'localhost' || 
+                  window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+  let depth = 0;
+  let current = window;
+  while (current !== window.top && current.parent !== current) {
+    depth++;
+    current = current.parent;
+    if (depth > 10) break;
+  }
+  const isInIframe = isLocal ? (depth >= 1) : (depth >= 3);
+
+  if (isInIframe) {
+    document.documentElement.classList.add('in-iframe');
+    const addClass = () => { if (document.body) document.body.classList.add('in-iframe'); };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', addClass);
+    } else {
+      addClass();
+    }
+  }
+})();
+
+// Sử dụng URL Web App được định nghĩa toàn cục từ trang chính
+// Gán thẳng vào window (không khai báo) => miễn nhiễm lỗi "already declared"
+// kể cả khi GAS nạp script này nhiều lần hoặc tồn tại file cũ khai báo trùng
+window.API_URL = window.SCRIPT_URL;
+window.CACHE_DURATION = 60000; // 60 giây
+
+async function apiPost(body) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    body: JSON.stringify(body)
+  });
+  const json = await res.json();
+  if (json.status === 'error') throw new Error(json.message);
+  return json.data;
+}
+
+function getCache(key) {
+  try {
+    const cached = sessionStorage.getItem('cpm_cache_' + key);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    const age = Date.now() - parsed.timestamp;
+    if (age < CACHE_DURATION) {
+      return parsed.data;
+    }
+  } catch(e) {}
+  return null;
+}
+
+function setCache(key, data) {
+  try {
+    const obj = {
+      timestamp: Date.now(),
+      data: data
+    };
+    sessionStorage.setItem('cpm_cache_' + key, JSON.stringify(obj));
+  } catch(e) {}
+}
+
+function clearCache(key) {
+  try {
+    sessionStorage.removeItem('cpm_cache_' + key);
+  } catch(e) {}
+}
+
+window.API = {
+  list: async (sheet, useCache = true) => {
+    if (useCache) {
+      const cached = getCache(sheet);
+      if (cached) return cached;
+    }
+    const data = await apiPost({ action: 'list', sheet });
+    if (useCache) {
+      setCache(sheet, data);
+    }
+    return data;
+  },
+  
+  batchList: async (sheets, useCache = true) => {
+    const result = {};
+    const missingSheets = [];
+    
+    if (useCache) {
+      sheets.forEach(sheet => {
+        const cached = getCache(sheet);
+        if (cached) {
+          result[sheet] = cached;
+        } else {
+          missingSheets.push(sheet);
+        }
+      });
+    } else {
+      missingSheets.push(...sheets);
+    }
+    
+    if (missingSheets.length > 0) {
+      try {
+        const batchData = await apiPost({ action: 'batch_list', sheets: missingSheets });
+        Object.keys(batchData).forEach(sheet => {
+          result[sheet] = batchData[sheet];
+          if (useCache) {
+            setCache(sheet, batchData[sheet]);
+          }
+        });
+      } catch(err) {
+        console.error("Lỗi batchList, thực hiện fallback gọi tuần tự:", err);
+        // Fallback: gọi từng sheet riêng lẻ nếu batch bị lỗi
+        for (const sheet of missingSheets) {
+          result[sheet] = await API.list(sheet, useCache);
+        }
+      }
+    }
+    
+    return result;
+  },
+
+  get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+  
+  create: async (sheet, data) => {
+    const res = await apiPost({ action: 'create', sheet, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  update: async (sheet, id, data) => {
+    const res = await apiPost({ action: 'update', sheet, id, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  delete: async (sheet, id) => {
+    const res = await apiPost({ action: 'delete', sheet, id });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  login:  (email, password)  => apiPost({ action: 'login',  email, password }),
+
+  loginTVGS: (identifier, password) => apiPost({ action: 'login_tvgs', identifier, password }),
+
+  tvgsSync: () => apiPost({ action: 'tvgs_sync' }),
+
+  tvgsCheckNow: () => apiPost({ action: 'tvgs_check_now' }),
+
+  tvgsChangePassword: (maSoDN, oldPassword, newPassword) => apiPost({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+
+  qtInit: (maDA) => apiPost({ action: 'qt_init', maDA }),
+
+  qtLoad: (maQT) => apiPost({ action: 'qt_load', maQT }),
+
+  qtDelete: (maQT) => apiPost({ action: 'qt_delete', maQT }),
+
+  clearAllCache: () => {
+    try {
+      const keys = Object.keys(sessionStorage);
+      keys.forEach(key => {
+        if (key.indexOf('cpm_cache_') === 0) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    } catch(e) {}
+  }
+};
+
+// ─── SESSION TOKEN RECOVERY ─────────────────────────────────────────────────
+// GAS đổi iframe origin mỗi lần chuyển trang → localStorage bị xóa.
+// Giải pháp: Code.gs truyền authToken qua template, trang đích đọc và khôi phục.
+if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+  try {
+    localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN)));
+  } catch(e) {}
+}
+
+// ─── AUTH & NAVIGATION ──────────────────────────────────────────────────────
+window.Auth = {
+  navigateTo: (url) => {
+    // Không tự điều hướng khi đang ở màn hình cấp quyền OAuth của Google
+    // (sandbox chặn navigation không có thao tác người dùng -> lỗi console)
+    if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+
+    const isLocal = window.location.protocol === 'file:' ||
+                    window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+                    
+    // Trên GAS: đính kèm token session vào URL để server truyền xuống trang đích
+    if (!isLocal) {
+      const profileStr = localStorage.getItem('userProfile');
+      if (profileStr && !url.includes('token=')) {
+        const token = btoa(encodeURIComponent(profileStr));
+        url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+      }
+    }
+
+    if (isLocal) {
+      window.location.href = url;
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_top';
+      if (document.body) {
+        document.body.appendChild(link);
+      } else {
+        document.documentElement.appendChild(link);
+      }
+      link.click();
+    }
+  },
+  checkAuth: (isLoginPage = false) => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+
+    const profileStr = localStorage.getItem('userProfile');
+    let profile = null;
+    try {
+      if (profileStr) profile = JSON.parse(profileStr);
+    } catch(e) {
+      localStorage.removeItem('userProfile');
+    }
+
+    if (isLoginPage) {
+      if (profile) {
+        Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+      }
+    } else {
+      if (!profile) {
+        const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                            (!window.location.pathname.includes('/pages/'));
+        Auth.navigateTo(isLocal 
+          ? (isIndexPage ? "pages/login.html" : "login.html") 
+          : SCRIPT_URL + "?page=login");
+        return null;
+      }
+      return profile;
+    }
+  },
+  logout: () => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+    localStorage.removeItem('userProfile');
+    if (isLocal) {
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+      Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+    } else {
+      Auth.navigateTo(SCRIPT_URL + "?page=login");
+    }
+  }
+};
+</script>
+
+
+  <!-- Fallback for local testing if GAS include didn't run -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list: (sheet) => apiPost({ action: 'list', sheet }),
+        get: (sheet, id) => apiPost({ action: 'get', sheet, id }),
+        create: (sheet, data) => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => apiPost({ action: 'delete', sheet, id }),
+        login: (email, password) => apiPost({ action: 'login', email, password })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-light);
+      overflow-x: hidden;
+    }
+
+    #sidebar {
+      width: var(--sidebar-width);
+      height: 100vh;
+      position: fixed;
+      left: 0;
+      top: 0;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-color);
+      transition: all 0.3s;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border-color);
+    }
+
+    #sidebar .sidebar-header {
+      padding: 20px 24px;
+      background: var(--sidebar-bg);
+      color: #0f172a;
+      font-weight: 700;
+      font-size: 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    #sidebar .nav-link {
+      color: var(--sidebar-color);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      transition: all 0.2s ease-in-out;
+      font-weight: 500;
+    }
+
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      color: var(--sidebar-active-color) !important;
+      background: var(--sidebar-active-bg) !important;
+      border-left: 4px solid var(--primary-color);
+    }
+
+    #sidebar .nav-link i {
+      font-size: 1.1rem;
+    }
+
+    #content {
+      margin-left: var(--sidebar-width);
+      width: calc(100% - var(--sidebar-width));
+      min-height: 100vh;
+      transition: all 0.3s;
+      padding: 20px;
+    }
+
+    @media (max-width: 991.98px) {
+      #sidebar {
+        margin-left: calc(-1 * var(--sidebar-width));
+      }
+      #sidebar.active {
+        margin-left: 0;
+      }
+      #content {
+        margin-left: 0;
+        width: 100%;
+      }
+      #content.active {
+        margin-left: var(--sidebar-width);
+      }
+    }
+
+    .top-navbar {
+      background: white;
+      box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+      margin: -20px -20px 20px -20px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .card-table {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .nav-tabs {
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .nav-tabs .nav-link {
+      border: none;
+      color: #64748b;
+      font-weight: 600;
+      padding: 12px 20px;
+    }
+
+    .nav-tabs .nav-link.active {
+      color: var(--primary-color);
+      border-bottom: 2px solid var(--primary-color);
+      background: transparent;
+    }
+
+    .table th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      background: #f8fafc;
+    }
+  
+    /* Premium Indigo Buttons */
+    .btn-primary {
+      background: var(--primary-gradient) !important;
+      border: none !important;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important;
+      transition: all 0.2s ease !important;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.35) !important;
+      transform: translateY(-1px);
+    }
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+    
+    /* Card headers & Table styling */
+    .card {
+      border: 1px solid var(--border-color) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02) !important;
+      overflow: hidden;
+    }
+    .table th {
+      background-color: #f8fafc !important;
+      color: #475569 !important;
+      font-weight: 600 !important;
+      font-size: 0.8rem !important;
+      text-uppercase: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+  </style>
+</head>
+
+<body>
+
+        <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span>CPM 5.0</span>
+      <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link ">
+        <i class="bi bi-speedometer2"></i>
+        <span>Tổng quan</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link ">
+        <i class="bi bi-briefcase"></i>
+        <span>Dự án</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link ">
+        <i class="bi bi-list-task"></i>
+        <span>Nhiệm vụ</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link active">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>Hợp đồng</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link ">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Sơ đồ Gantt</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link ">
+        <i class="bi bi-people"></i>
+        <span>Nhân viên</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link ">
+        <i class="bi bi-building"></i>
+        <span>Nhà thầu</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link ">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Tư vấn giám sát</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link ">
+        <i class="bi bi-journal-richtext"></i>
+        <span>Báo cáo ngày</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link ">
+        <i class="bi bi-calculator"></i>
+        <span>Quyết toán DAHT</span>
+      </a>
+    </div>
+
+    <!-- Hỗ trợ kỹ thuật -->
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <!-- Zalo -->
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Zalo hỗ trợ">
+            <i class="bi bi-chat-dots-fill fs-6"></i>
+          </a>
+          <!-- Gmail -->
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Gửi Email">
+            <i class="bi bi-envelope-fill fs-6"></i>
+          </a>
+          <!-- Youtube -->
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s; background-color: #ff0000 !important;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Kênh Youtube">
+            <i class="bi bi-youtube fs-6"></i>
+          </a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+
+    <!-- Profile (Footer) -->
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">
+            A
+          </div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- Top Navbar -->
+    <div class="top-navbar d-flex align-items-center justify-content-between">
+      <h4 class="mb-0 fw-bold">Quản lý Hợp đồng</h4>
+    </div>
+
+    <!-- Tabs Container -->
+    <div class="card card-table bg-white mt-4">
+      <div class="card-header bg-white pt-3 border-0">
+        <div class="d-flex align-items-center justify-content-between flex-nowrap w-100" style="border-bottom: 2px solid #e2e8f0;">
+          <ul class="nav nav-tabs flex-nowrap" id="contractTabs" role="tablist" style="border-bottom: none !important; margin-bottom: -2px !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; -ms-overflow-style: none; flex-grow: 1;">
+            <style>
+              #contractTabs::-webkit-scrollbar { display: none; }
+            </style>
+            <li class="nav-item">
+              <button class="nav-link active text-nowrap" data-bs-toggle="tab" data-bs-target="#tab-packages">Gói thầu</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link text-nowrap" data-bs-toggle="tab" data-bs-target="#tab-contracts">Hợp đồng</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link text-nowrap" data-bs-toggle="tab" data-bs-target="#tab-appendix">Phụ lục HĐ</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link text-nowrap" data-bs-toggle="tab" data-bs-target="#tab-acceptance">Nghiệm thu</button>
+            </li>
+          </ul>
+          <div class="d-flex gap-2 align-items-center pb-2 ms-2 flex-shrink-0">
+            <button class="btn btn-outline-success btn-sm d-flex align-items-center gap-1 text-nowrap" id="btnImportExcel" onclick="openImportModal()">
+              <i class="bi bi-file-earmark-arrow-up"></i>
+              <span class="d-none d-md-inline">Nhập Excel</span>
+            </button>
+            <button class="btn btn-success btn-sm d-flex align-items-center gap-1 text-nowrap" onclick="exportToExcel()">
+              <i class="bi bi-file-earmark-arrow-down"></i>
+              <span class="d-none d-md-inline">Xuất Excel</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-body p-0">
+        <div class="tab-content">
+
+          <!-- Gói thầu Tab -->
+          <div class="tab-pane fade show active" id="tab-packages">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Mã GT</th>
+                    <th>Mã DA</th>
+                    <th>Tên gói thầu</th>
+                    <th>Loại GT</th>
+                    <th>Giá gói thầu</th>
+                    <th>Trạng thái</th>
+                    <th class="text-end">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="body-packages">
+                  <tr>
+                    <td colspan="7" class="text-center py-4 text-muted">Đang tải...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Hợp đồng Tab -->
+          <div class="tab-pane fade" id="tab-contracts">
+
+            <!-- Thanh lọc căn phải -->
+            <div class="d-flex justify-content-end align-items-center gap-2 px-3 pt-3 pb-2 border-bottom" id="contracts-filter-bar" style="display:none!important">
+              <!-- Lọc theo Tên HĐ (multi-select) -->
+              <div class="d-flex align-items-center gap-1">
+                <label class="text-muted small mb-0 text-nowrap"><i class="bi bi-funnel me-1"></i>Tên HĐ:</label>
+                <select id="filter-tenHD" multiple size="1"
+                  class="form-select form-select-sm"
+                  style="min-width:220px; max-width:320px;"
+                  title="Chọn tên hợp đồng"
+                  onchange="filterContracts()">
+                  <option value="__all__" selected>— Tất cả —</option>
+                </select>
+              </div>
+              <!-- Lọc theo Trạng thái (single-select) -->
+              <div class="d-flex align-items-center gap-1">
+                <label class="text-muted small mb-0 text-nowrap">Trạng thái:</label>
+                <select id="filter-trangThai" class="form-select form-select-sm" style="min-width:160px;"
+                  onchange="filterContracts()">
+                  <option value="__all__">— Tất cả —</option>
+                  <option value="Đang thực hiện">Đang thực hiện</option>
+                  <option value="Đã nghiệm thu">Đã nghiệm thu</option>
+                  <option value="Thanh lý">Thanh lý</option>
+                  <option value="Tạm dừng">Tạm dừng</option>
+                  <option value="Hủy bỏ">Hủy bỏ</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Mã HĐ</th>
+                    <th>Mã DA</th>
+                    <th>Tên HĐ</th>
+                    <th>Giá HĐ</th>
+                    <th>Giá quyết toán</th>
+                    <th>Lũy kế TT</th>
+                    <th>% LK</th>
+                    <th class="text-end">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="body-contracts">
+                  <tr>
+                    <td colspan="8" class="text-center py-4 text-muted">Đang tải...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Phụ lục Tab -->
+          <div class="tab-pane fade" id="tab-appendix">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Mã PLHĐ</th>
+                    <th>Mã HĐ</th>
+                    <th>Mã DA</th>
+                    <th>Nội dung</th>
+                    <th>Ngày ký</th>
+                    <th>Giá trị tăng/giảm</th>
+                    <th>Thời gian tăng/giảm</th>
+                    <th class="text-end">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="body-appendix">
+                  <tr>
+                    <td colspan="8" class="text-center py-4 text-muted">Đang tải...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Nghiệm thu Tab -->
+          <div class="tab-pane fade" id="tab-acceptance">
+
+            <!-- Thanh lọc căn phải cho Nghiệm thu -->
+            <div class="d-flex justify-content-end align-items-center gap-2 px-3 pt-3 pb-2 border-bottom" id="acceptance-filter-bar" style="display:none!important">
+              <!-- Lọc theo Loại GT (multi-select) -->
+              <div class="d-flex align-items-center gap-1">
+                <label class="text-muted small mb-0 text-nowrap"><i class="bi bi-funnel me-1"></i>Loại GT:</label>
+                <select id="filter-acpt-loaiGT" multiple size="1"
+                  class="form-select form-select-sm"
+                  style="min-width:180px; max-width:280px;"
+                  title="Chọn loại gói thầu"
+                  onchange="filterAcceptance()">
+                  <option value="__all__" selected>— Tất cả —</option>
+                  <option value="Xây lắp">Xây lắp</option>
+                  <option value="Thiết bị">Thiết bị</option>
+                  <option value="Tư vấn">Tư vấn</option>
+                  <option value="Phi tư vấn">Phi tư vấn</option>
+                </select>
+              </div>
+              <!-- Lọc theo Trạng thái (single-select) -->
+              <div class="d-flex align-items-center gap-1">
+                <label class="text-muted small mb-0 text-nowrap">Trạng thái:</label>
+                <select id="filter-acpt-trangThai" class="form-select form-select-sm" style="min-width:160px;"
+                  onchange="filterAcceptance()">
+                  <option value="__all__">— Tất cả —</option>
+                  <option value="Chưa thanh toán">Chưa thanh toán</option>
+                  <option value="Đã thanh toán">Đã thanh toán</option>
+                  <option value="Đã hoàn thành">Đã hoàn thành</option>
+                  <option value="Hủy thanh toán">Hủy thanh toán</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Mã HSNT</th>
+                    <th>Mã HĐ</th>
+                    <th>Mã DA</th>
+                    <th>Lần NT</th>
+                    <th>Ngày NT</th>
+                    <th>Giá trị NT</th>
+                    <th>Lũy kế</th>
+                    <th class="text-end">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="body-acceptance">
+                  <tr>
+                    <td colspan="8" class="text-center py-4 text-muted">Đang tải...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════ MODAL XEM CHI TIẾT GÓI THẦU ═══════════════════ -->
+  <div class="modal fade" id="modalViewGoiThau" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header" style="background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);">
+          <div>
+            <h5 class="modal-title text-white fw-bold mb-0"><i class="bi bi-file-earmark-text me-2"></i>Chi tiết Gói thầu</h5>
+            <small class="text-white-50" id="gt-modal-code"></small>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-sm btn-light" id="btnEditGoiThau" onclick="enableEditGoiThau()" title="Chỉnh sửa">
+              <i class="bi bi-pencil-square me-1"></i>Sửa
+            </button>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+        </div>
+        <div class="modal-body p-4" id="gt-modal-loading">
+          <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div class="mt-2 text-muted">Đang tải dữ liệu...</div>
+          </div>
+        </div>
+        <div class="modal-body p-4 d-none" id="gt-modal-body">
+          <div class="row g-3">
+            <!-- Tên dự án (chỉ xem) -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">🏗️ Tên Dự án</label>
+              <div class="form-control bg-light" id="gt-view-tenDA" style="min-height: 38px;"></div>
+            </div>
+
+            <!-- Tên Gói thầu -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">📋 Tên Gói thầu</label>
+              <input type="text" class="form-control" id="gt-view-tenGT" readonly>
+            </div>
+
+            <!-- Loại GT — View (text) / Edit (select) -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">🏷️ Loại GT</label>
+              <input type="text" class="form-control" id="gt-view-loaiGT" readonly>
+              <select class="form-select d-none" id="gt-edit-loaiGT">
+                <option value="Xây lắp">Xây lắp</option>
+                <option value="Thiết bị">Thiết bị</option>
+                <option value="Tư vấn">Tư vấn</option>
+                <option value="Phi tư vấn">Phi tư vấn</option>
+              </select>
+            </div>
+
+            <!-- Hình thức LCNT — View (text) / Edit (select) -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">📑 Hình thức LCNT</label>
+              <input type="text" class="form-control" id="gt-view-hinhThucLCNT" readonly>
+              <select class="form-select d-none" id="gt-edit-hinhThucLCNT">
+                <option value="Đấu thầu rộng rãi">Đấu thầu rộng rãi</option>
+                <option value="Đấu thầu hạn chế">Đấu thầu hạn chế</option>
+                <option value="Chỉ định thầu rút gọn">Chỉ định thầu rút gọn</option>
+                <option value="Chào hàng cạnh tranh">Chào hàng cạnh tranh</option>
+                <option value="Mua sắm trực tiếp">Mua sắm trực tiếp</option>
+                <option value="Tự thực hiện">Tự thực hiện</option>
+                <option value="Tham gia thực hiện của cộng đồng">Tham gia thực hiện của cộng đồng</option>
+                <option value="Đàm phán giá">Đàm phán giá</option>
+                <option value="LCNT trong trường hợp đặc biệt">LCNT trong trường hợp đặc biệt</option>
+              </select>
+            </div>
+
+            <!-- Giá Gói thầu -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">💰 Giá Gói thầu</label>
+              <input type="text" class="form-control fw-bold text-success" id="gt-view-giaGT" readonly>
+            </div>
+
+            <!-- Trạng thái -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">📊 Trạng thái</label>
+              <div id="gt-view-trangThai" class="mt-1"></div>
+            </div>
+
+            <!-- Ghi chú -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">📎 Ghi chú</label>
+              <input type="text" class="form-control" id="gt-view-ghiChu" readonly>
+            </div>
+
+            <!-- File hiện tại (luôn hiển) -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">📁 File QĐ phê duyệt dự toán</label>
+              <div id="gt-view-file" class="border rounded p-3 bg-light"></div>
+            </div>
+
+            <!-- Upload file mới (chỉ hiện khi Sửa) -->
+            <div class="col-12 d-none" id="gt-upload-section">
+              <label class="form-label small fw-bold text-muted">📤 Tải lên File QĐ mới</label>
+              <div class="border rounded p-3" style="background: #f8f9ff; border: 2px dashed #0d6efd !important;">
+                <input type="file" class="form-control" id="gt-file-input"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  onchange="previewSelectedFile(this)">
+                <div id="gt-file-preview" class="mt-2 d-none">
+                  <div class="d-flex align-items-center gap-2 text-success">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span id="gt-file-name" class="small fw-bold"></span>
+                  </div>
+                </div>
+                <div class="mt-2">
+                  <div id="gt-upload-progress" class="d-none">
+                    <div class="progress" style="height: 6px;">
+                      <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary w-100"></div>
+                    </div>
+                    <small class="text-muted mt-1 d-block">Đang tải file lên...</small>
+                  </div>
+                </div>
+                <small class="text-muted d-block mt-1">Hỗ trợ: PDF, Word, Excel, JPG, PNG. File sẽ được lưu vào thư mục dự án trên Drive.</small>
+              </div>
+            </div>
+
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+          <button class="btn btn-primary d-none" id="btnSaveGoiThau" onclick="saveGoiThau()">
+            <i class="bi bi-save me-1"></i>Lưu và Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ MODAL XÁC NHẬN XÓA ═══════════════════ -->
+  <div class="modal fade" id="modalConfirmDelete" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle me-2"></i>Xác nhận xóa</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body text-center py-4">
+          <p class="mb-1">Bạn có chắc chắn muốn xóa bản ghi</p>
+          <p class="fw-bold fs-5 text-danger" id="delete-record-label"></p>
+          <p class="text-muted small">Hành động này <strong>không thể hoàn tác</strong>.</p>
+        </div>
+        <div class="modal-footer justify-content-center">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+          <button class="btn btn-danger" id="btnConfirmDelete">
+            <i class="bi bi-trash3 me-1"></i>Xóa
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ MODAL XEM CHI TIẾT HỢP ĐỒNG ═══════════════════ -->
+  <div class="modal fade" id="modalViewHopDong" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header" style="background: linear-gradient(135deg, #198754 0%, #146c43 100%);">
+          <div>
+            <h5 class="modal-title text-white fw-bold mb-0"><i class="bi bi-file-earmark-ruled me-2"></i>Chi tiết Hợp đồng</h5>
+            <small class="text-white-50" id="hd-modal-code"></small>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-sm btn-light" id="btnEditHopDong" onclick="enableEditHopDong()" title="Chỉnh sửa">
+              <i class="bi bi-pencil-square me-1"></i>Sửa
+            </button>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="modal-body p-4" id="hd-modal-loading">
+          <div class="text-center py-5">
+            <div class="spinner-border text-success" role="status"></div>
+            <div class="mt-2 text-muted">Đang tải dữ liệu...</div>
+          </div>
+        </div>
+
+        <!-- Body Content -->
+        <div class="modal-body p-4 d-none" id="hd-modal-body">
+          <div class="row g-3">
+
+            <!-- Tên dự án (chỉ đọc) -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">🏗️ Tên Dự án</label>
+              <div class="form-control bg-light fw-semibold" id="hd-view-tenDA" style="min-height: 38px;"></div>
+            </div>
+
+            <!-- Mã HĐ + Ngày ký -->
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">📋 Mã Hợp đồng</label>
+              <input type="text" class="form-control" id="hd-view-maHD" readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">📅 Ngày ký HĐ</label>
+              <input type="text" class="form-control datepicker" id="hd-view-ngayKy" placeholder="Chọn ngày..." readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">⏳ Thời gian HĐ (ngày)</label>
+              <input type="number" class="form-control" id="hd-view-thoiGian" readonly>
+            </div>
+
+            <!-- Tên HĐ -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">📄 Tên Hợp đồng</label>
+              <input type="text" class="form-control" id="hd-view-tenHD" readonly>
+            </div>
+
+            <!-- Loại HĐ (view/edit) -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">🏷️ Loại Hợp đồng</label>
+              <input type="text" class="form-control" id="hd-view-loaiHD" readonly>
+              <select class="form-select d-none" id="hd-edit-loaiHD">
+                <option value="Trọn gói">Trọn gói</option>
+                <option value="Tỷ lệ %">Tỷ lệ %</option>
+                <option value="ĐG cố định">ĐG cố định</option>
+                <option value="ĐG điều chỉnh">ĐG điều chỉnh</option>
+              </select>
+            </div>
+
+            <!-- Tên nhà thầu -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">🏢 Tên Nhà thầu</label>
+              <input type="text" class="form-control" id="hd-view-nhaThau" readonly>
+              <select class="form-select d-none" id="hd-edit-nhaThau"></select>
+            </div>
+
+            <!-- Giá HĐ + Giá QT -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">💰 Giá Hợp đồng</label>
+              <input type="text" class="form-control fw-bold text-success" id="hd-view-giaHD" readonly>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">💎 Giá Quyết toán</label>
+              <input type="text" class="form-control fw-bold text-info" id="hd-view-giaQuyetToan" readonly>
+            </div>
+
+            <!-- Ngày hiệu lực -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">📆 Ngày hiệu lực</label>
+              <input type="text" class="form-control datepicker" id="hd-view-ngayHieuLuc" placeholder="Chọn ngày..." readonly>
+            </div>
+
+            <!-- Trạng thái (view/edit) -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">📊 Trạng thái HĐ</label>
+              <div id="hd-view-trangThai" class="mt-1"></div>
+              <select class="form-select d-none" id="hd-edit-trangThai">
+                <option value="Đang thực hiện">Đang thực hiện</option>
+                <option value="Đã nghiệm thu">Đã nghiệm thu</option>
+                <option value="Thanh lý">Thanh lý</option>
+                <option value="Tạm dừng">Tạm dừng</option>
+                <option value="Hủy bỏ">Hủy bỏ</option>
+              </select>
+            </div>
+
+            <!-- File hiện tại -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">📁 File Hợp đồng</label>
+              <div id="hd-view-file" class="border rounded p-3 bg-light"></div>
+            </div>
+
+            <!-- Upload file mới (chỉ hiện khi Sửa) -->
+            <div class="col-12 d-none" id="hd-upload-section">
+              <label class="form-label small fw-bold text-muted">📤 Tải lên File HĐ mới</label>
+              <div class="border rounded p-3" style="background: #f0fff4; border: 2px dashed #198754 !important;">
+                <input type="file" class="form-control" id="hd-file-input"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  onchange="previewHdFile(this)">
+                <div id="hd-file-preview" class="mt-2 d-none">
+                  <div class="d-flex align-items-center gap-2 text-success">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span id="hd-file-name" class="small fw-bold"></span>
+                  </div>
+                </div>
+                <div id="hd-upload-progress" class="mt-2 d-none">
+                  <div class="progress" style="height: 6px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success w-100"></div>
+                  </div>
+                  <small class="text-muted mt-1 d-block">Đang tải file lên...</small>
+                </div>
+                <small class="text-muted d-block mt-1">Hỗ trợ: PDF, Word, Excel, JPG, PNG. File sẽ lưu vào thư mục dự án trên Drive.</small>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+          <button class="btn btn-success d-none" id="btnSaveHopDong" onclick="saveHopDong()">
+            <i class="bi bi-save me-1"></i>Lưu &amp; Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ═══════════════════ MODAL XEM CHI TIẾT PHỤ LỤC HĐ ═══════════════════ -->
+  <div class="modal fade" id="modalViewPhuLuc" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header" style="background: linear-gradient(135deg, #0dcaf0 0%, #0bacd1 100%);">
+          <div>
+            <h5 class="modal-title text-white fw-bold mb-0"><i class="bi bi-file-earmark-plus me-2"></i>Chi tiết Phụ lục Hợp đồng</h5>
+            <small class="text-white-50" id="pl-modal-code"></small>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-sm btn-light" id="btnEditPhuLuc" onclick="enableEditPhuLuc()" title="Chỉnh sửa">
+              <i class="bi bi-pencil-square me-1"></i>Sửa
+            </button>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="modal-body p-4" id="pl-modal-loading">
+          <div class="text-center py-5">
+            <div class="spinner-border text-info" role="status"></div>
+            <div class="mt-2 text-muted">Đang tải dữ liệu...</div>
+          </div>
+        </div>
+
+        <!-- Body Content -->
+        <div class="modal-body p-4 d-none" id="pl-modal-body">
+          <div class="row g-3">
+
+            <!-- Dự án & Hợp đồng (chỉ đọc) -->
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">🏗️ Tên Dự án</label>
+              <div class="form-control bg-light fw-semibold" id="pl-view-tenDA" style="min-height: 38px;"></div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-muted">📄 Tên Hợp đồng</label>
+              <div class="form-control bg-light fw-semibold" id="pl-view-tenHD" style="min-height: 38px;"></div>
+            </div>
+
+            <!-- Mã DA + Mã HĐ + Mã PLHĐ -->
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">🏗️ Mã Dự án</label>
+              <input type="text" class="form-control bg-light" id="pl-view-maDA" readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">📋 Mã Hợp đồng</label>
+              <input type="text" class="form-control bg-light" id="pl-view-maHD" readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">🔖 Mã Phụ lục HĐ</label>
+              <input type="text" class="form-control" id="pl-view-maPLHD" readonly>
+            </div>
+
+            <!-- Tên nhà thầu -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">🏢 Tên Nhà thầu</label>
+              <input type="text" class="form-control" id="pl-view-nhaThau" readonly>
+              <select class="form-select d-none" id="pl-edit-nhaThau"></select>
+            </div>
+
+            <!-- Nội dung PLHĐ -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">📝 Nội dung Phụ lục HĐ</label>
+              <textarea class="form-control" id="pl-view-noiDung" rows="3" readonly></textarea>
+            </div>
+
+            <!-- Ngày ký PLHĐ + Giá trị PLHĐ + Gia hạn thời gian -->
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">📅 Ngày ký PLHĐ</label>
+              <input type="text" class="form-control datepicker" id="pl-view-ngayKy" placeholder="Chọn ngày..." readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">💰 Giá trị PLHĐ (nếu có)</label>
+              <input type="text" class="form-control fw-bold text-success" id="pl-view-giaTriPL" readonly>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">⏳ THỜI GIAN TĂNG/GIẢM (ngày)</label>
+              <input type="number" class="form-control" id="pl-view-giaHan" readonly>
+            </div>
+
+            <!-- Ghi chú -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">✏️ Ghi chú</label>
+              <input type="text" class="form-control" id="pl-view-ghiChu" readonly>
+            </div>
+
+            <!-- File hiện tại -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">📁 File đính kèm Phụ lục</label>
+              <div id="pl-view-file" class="border rounded p-3 bg-light"></div>
+            </div>
+
+            <!-- Upload file mới (chỉ hiện khi Sửa) -->
+            <div class="col-12 d-none" id="pl-upload-section">
+              <label class="form-label small fw-bold text-muted">📤 Tải lên File PLHĐ mới</label>
+              <div class="border rounded p-3" style="background: #eafaff; border: 2px dashed #0dcaf0 !important;">
+                <input type="file" class="form-control" id="pl-file-input"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  onchange="previewPlFile(this)">
+                <div id="pl-file-preview" class="mt-2 d-none">
+                  <div class="d-flex align-items-center gap-2 text-info">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span id="pl-file-name" class="small fw-bold"></span>
+                  </div>
+                </div>
+                <div id="pl-upload-progress" class="mt-2 d-none">
+                  <div class="progress" style="height: 6px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-info w-100"></div>
+                  </div>
+                  <small class="text-muted mt-1 d-block">Đang tải file lên...</small>
+                </div>
+                <small class="text-muted d-block mt-1">Hỗ trợ: PDF, Word, Excel, JPG, PNG. File sẽ lưu vào thư mục dự án trên Drive.</small>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+          <button class="btn btn-info text-white d-none" id="btnSavePhuLuc" onclick="savePhuLuc()">
+            <i class="bi bi-save me-1"></i>Lưu &amp; Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ MODAL XEM CHI TIẾT NGHIỆM THU ═══════════════════ -->
+  <div class="modal fade" id="modalViewNghiemThu" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header" style="background: linear-gradient(135deg, #198754 0%, #157347 100%);">
+          <div>
+            <h5 class="modal-title text-white fw-bold mb-0"><i class="bi bi-file-earmark-check me-2"></i>Chi tiết Hồ sơ Nghiệm thu</h5>
+            <small class="text-white-50" id="nt-modal-code"></small>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-sm btn-light" id="btnEditNghiemThu" onclick="enableEditNghiemThu()" title="Chỉnh sửa">
+              <i class="bi bi-pencil-square me-1"></i>Sửa
+            </button>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="modal-body p-4" id="nt-modal-loading">
+          <div class="text-center py-5">
+            <div class="spinner-border text-success" role="status"></div>
+            <div class="mt-2 text-muted">Đang tải dữ liệu...</div>
+          </div>
+        </div>
+
+        <!-- Body Content -->
+        <div class="modal-body p-4 d-none" id="nt-modal-body">
+          <div class="row g-3">
+
+            <!-- Thông tin dự án (chỉ đọc) -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">🏗️ Tên Dự án</label>
+              <div class="form-control bg-light fw-semibold text-truncate" id="nt-view-tenDA" style="min-height: 38px;"></div>
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">📄 Tên Hợp đồng</label>
+              <div class="form-control bg-light fw-semibold text-truncate" id="nt-view-tenHD" style="min-height: 38px;"></div>
+            </div>
+
+            <!-- Tên nhà thầu -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">🏢 Tên Nhà thầu</label>
+              <input type="text" class="form-control" id="nt-view-nhaThau" readonly>
+              <select class="form-select d-none" id="nt-edit-nhaThau"></select>
+            </div>
+
+            <!-- Mã DA + Mã HĐ -->
+            <div class="col-md-3">
+              <label class="form-label small fw-bold text-muted">🏗️ Mã Dự án</label>
+              <input type="text" class="form-control bg-light" id="nt-view-maDA" readonly>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-bold text-muted">📄 Mã Hợp đồng</label>
+              <input type="text" class="form-control bg-light" id="nt-view-maHD" readonly>
+            </div>
+
+            <!-- Mã HSNT + Lần NT -->
+            <div class="col-md-3">
+              <label class="form-label small fw-bold text-muted">📋 Mã Hồ sơ NT</label>
+              <input type="text" class="form-control bg-light" id="nt-view-maHSNT" readonly>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-bold text-muted">🔢 Lần Nghiệm thu</label>
+              <input type="number" class="form-control" id="nt-view-lanNT" readonly>
+            </div>
+
+            <!-- Ngày NT + Giá trị NT -->
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">📅 Ngày Nghiệm thu</label>
+              <input type="text" class="form-control datepicker" id="nt-view-ngayNT" placeholder="Chọn ngày..." readonly>
+            </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">💰 Giá trị Nghiệm thu</label>
+              <input type="text" class="form-control fw-bold text-success" id="nt-view-giaTriNT" readonly>
+            </div>
+
+            <!-- Trạng thái (view/edit) -->
+            <div class="col-md-4">
+              <label class="form-label small fw-bold text-muted">📊 Trạng thái</label>
+              <input type="text" class="form-control fw-bold text-primary" id="nt-view-trangThaiText" readonly>
+              <select class="form-select d-none" id="nt-edit-trangThai">
+                <option value="Chưa thanh toán">Chưa thanh toán</option>
+                <option value="Đã thanh toán">Đã thanh toán</option>
+                <option value="Đã hoàn thành">Đã hoàn thành</option>
+                <option value="Hủy thanh toán">Hủy thanh toán</option>
+              </select>
+            </div>
+
+            <!-- Ghi chú -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">✏️ Ghi chú</label>
+              <input type="text" class="form-control" id="nt-view-ghiChu" readonly>
+            </div>
+
+            <!-- File hiện tại -->
+            <div class="col-12">
+              <label class="form-label small fw-bold text-muted">📁 File Nghiệm thu đính kèm</label>
+              <div id="nt-view-file" class="border rounded p-3 bg-light"></div>
+            </div>
+
+            <!-- Upload file mới (chỉ hiện khi Sửa) -->
+            <div class="col-12 d-none" id="nt-upload-section">
+              <label class="form-label small fw-bold text-muted">📤 Tải lên File NT mới</label>
+              <div class="border rounded p-3" style="background: #eafaff; border: 2px dashed #198754 !important;">
+                <input type="file" class="form-control" id="nt-file-input"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  onchange="previewNtFile(this)">
+                <div id="nt-file-preview" class="mt-2 d-none">
+                  <div class="d-flex align-items-center gap-2 text-success">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span id="nt-file-name" class="small fw-bold"></span>
+                  </div>
+                </div>
+                <div id="nt-upload-progress" class="mt-2 d-none">
+                  <div class="progress" style="height: 6px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success w-100"></div>
+                  </div>
+                  <small class="text-muted mt-1 d-block">Đang tải file lên...</small>
+                </div>
+                <small class="text-muted d-block mt-1">Hỗ trợ: PDF, Word, Excel, JPG, PNG. File sẽ lưu vào thư mục dự án trên Drive.</small>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+          <button class="btn btn-success d-none" id="btnSaveNghiemThu" onclick="saveNghiemThu()">
+            <i class="bi bi-save me-1"></i>Lưu &amp; Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ MODAL NHẬP EXCEL ═══════════════════ -->
+  <div class="modal fade" id="modalImportExcel" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title fw-bold"><i class="bi bi-file-earmark-arrow-up me-2"></i>Nhập dữ liệu từ Excel</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <div class="mb-3 text-center">
+            <h6 class="fw-bold text-success" id="import-target-title">Đang nhập dữ liệu cho...</h6>
+            <p class="text-muted small">File Excel tải lên cần có các cột tiêu đề tiếng Việt tương ứng với Google Sheets.</p>
+          </div>
+          
+          <div class="border rounded p-4 text-center mb-4" id="drop-zone" style="background: #f8fafc; border: 2px dashed #198754 !important; cursor: pointer; transition: all 0.2s;">
+            <i class="bi bi-cloud-arrow-up text-success fs-1"></i>
+            <h6 class="mt-2 fw-semibold">Kéo thả file Excel vào đây hoặc click để chọn</h6>
+            <input type="file" id="excel-file-input" class="d-none" accept=".xlsx, .xls">
+            <span class="text-muted small d-block mt-1" id="selected-file-name">Chưa chọn file nào</span>
+          </div>
+
+          <div id="import-preview-section" class="d-none">
+            <h6 class="fw-bold mb-2 text-dark"><i class="bi bi-eye me-1"></i>Bản xem trước (Tối đa 10 dòng đầu)</h6>
+            <div class="table-responsive border rounded mb-3" style="max-height: 250px;">
+              <table class="table table-sm table-striped align-middle mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light sticky-top" id="import-preview-header"></thead>
+                <tbody id="import-preview-body"></tbody>
+              </table>
+            </div>
+            <div class="alert alert-info py-2 px-3 small d-flex align-items-center gap-2 mb-0">
+              <i class="bi bi-info-circle-fill fs-5"></i>
+              <span id="import-preview-summary">Phát hiện 0 dòng dữ liệu hợp lệ.</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+          <button type="button" class="btn btn-success" id="btnConfirmImport" disabled onclick="executeImport()">
+            <i class="bi bi-check-circle me-1"></i>Xác nhận Nhập
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let _allPackages = [];
+    let _allAppendix = [];
+    let _allContractors = [];
+    let _allProjects = [];
+    let _allContracts = [];
+
+    // Hàm an toàn gán trị ngày tháng cho datepicker (Flatpickr)
+    function setDateInputValue(el, value) {
+      if (typeof el === 'string') el = document.getElementById(el) || document.querySelector(el);
+      if (el) {
+        if (el._flatpickr) {
+          el._flatpickr.setDate(value || '', true);
+        } else {
+          el.value = value || '';
+        }
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Khởi tạo Flatpickr cho các datepicker
+      flatpickr(".datepicker", {
+        locale: "vn",
+        altInput: true,
+        altFormat: "d/m/Y",
+        dateFormat: "Y-m-d",
+        allowInput: true
+      });
+
+      if (!isManager) {
+        const btnImport = document.getElementById('btnImportExcel');
+        if (btnImport) btnImport.style.display = 'none';
+      }
+
+      loadAllData();
+      initExcelDragDrop();
+    });
+
+    async function loadAllData() {
+      try {
+        const batchData = await API.batchList(['goithau', 'hopdong', 'phuluc', 'nghiemthu', 'duan', 'nhathau']);
+        let pkgs = batchData.goithau || [];
+        let ctrs = batchData.hopdong || [];
+        let appx = batchData.phuluc || [];
+        let acpt = batchData.nghiemthu || [];
+        let duan = batchData.duan || [];
+        const contractors = batchData.nhathau || [];
+
+        // PHÂN QUYỀN: lọc dữ liệu nếu không phải là Quản lý
+        if (!isManager && userProfile && userProfile.hoTen) {
+          const uName = userProfile.hoTen.trim().toLowerCase();
+          duan = duan.filter(p => {
+            const ptKT = String(p.phuTrachKT || '').trim().toLowerCase();
+            const ptKT2 = String(p.phuTrachKeToan || '').trim().toLowerCase();
+            return ptKT === uName || ptKT2 === uName;
+          });
+          
+          const allowedProjectCodes = new Set(duan.map(p => String(p.maDA).trim().toLowerCase()));
+          
+          pkgs = pkgs.filter(pkg => pkg.maDA && allowedProjectCodes.has(String(pkg.maDA).trim().toLowerCase()));
+          ctrs = ctrs.filter(ctr => ctr.maDA && allowedProjectCodes.has(String(ctr.maDA).trim().toLowerCase()));
+          appx = appx.filter(ap => ap.maDA && allowedProjectCodes.has(String(ap.maDA).trim().toLowerCase()));
+          acpt = acpt.filter(ac => ac.maDA && allowedProjectCodes.has(String(ac.maDA).trim().toLowerCase()));
+        }
+
+        _allPackages = pkgs || [];
+        _allAppendix = appx || [];
+        _allContractors = contractors || [];
+        _allProjects = duan || [];
+        _allContracts = ctrs || [];
+
+        // Bản đồ maDA → tenDA để hiển thị tooltip (chuẩn hóa key dạng chuỗi trim)
+        const projectMap = {};
+        (duan || []).forEach(p => {
+          if (p.maDA) {
+            const keyDA = p.maDA.toString().trim();
+            projectMap[keyDA] = p.tenDA || p.maDA;
+          }
+        });
+
+        // Tạo map maGT -> loaiGT để tra cứu Loại gói thầu cho Nghiệm thu
+        const pkgTypeMap = {};
+        (pkgs || []).forEach(p => {
+          if (p.maGT) {
+            pkgTypeMap[p.maGT.toString().trim()] = p.loaiGT || '';
+          }
+        });
+
+        // Bản đồ maDA + maHD → tenHD để hiển thị tooltip Phụ lục HĐ (tránh trùng mã giữa các DA, chuẩn hóa key)
+        const contractMap = {};
+        const contractInfoMap = {};
+        (ctrs || []).forEach(c => {
+          if (c.maHD && c.maDA) {
+            const keyDA = c.maDA.toString().trim();
+            const keyHD = c.maHD.toString().trim();
+            const keyGT = c.maGT ? c.maGT.toString().trim() : '';
+            const compKey = keyDA + '_' + keyHD;
+            contractMap[compKey] = c.tenHD || c.maHD;
+            
+            contractInfoMap[compKey] = {
+              maDA: keyDA,
+              tenHD: c.tenHD || c.maHD,
+              loaiGT: pkgTypeMap[keyGT] || ''
+            };
+          }
+        });
+
+        renderPackages(pkgs || [], projectMap);
+        renderAppendix(appx || [], projectMap, contractMap);
+        renderContracts(ctrs || [], acpt || [], projectMap);
+        initAcceptanceFilter(acpt || [], projectMap, contractInfoMap);
+
+        // Khởi tạo Bootstrap Tooltips sau khi render
+        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+          new bootstrap.Tooltip(el, { placement: 'top', trigger: 'hover' });
+        });
+
+      } catch (err) {
+        console.error("Lỗi tải dữ liệu hợp đồng:", err);
+      }
+    }
+
+    function renderPackages(data, projectMap) {
+      const tbody = document.getElementById('body-packages');
+      
+      const loaiGtMap = {
+        'Tư vấn': 'bg-info-subtle text-info border-info-subtle',
+        'Xây lắp': 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+        'Phi tư vấn': 'bg-secondary-subtle text-secondary border-secondary-subtle',
+        'Thiết bị': 'bg-primary-subtle text-primary border-primary-subtle'
+      };
+
+      const trangThaiColors = {
+        'Đã hoàn thành': 'bg-success-subtle text-success border-success-subtle',
+        'Đang tổ chức LCNT': 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+        'Chưa triển khai': 'bg-secondary-subtle text-secondary border-secondary-subtle',
+        'Chưa thực hiện': 'bg-secondary-subtle text-secondary border-secondary-subtle'
+      };
+
+      tbody.innerHTML = data.map(item => {
+        const cleanDA = item.maDA ? item.maDA.toString().trim() : '';
+        const tenDA = projectMap && projectMap[cleanDA] ? projectMap[cleanDA] : (item.maDA || '—');
+        
+        const loaiClass = loaiGtMap[item.loaiGT] || 'bg-light text-dark border-secondary-subtle';
+        const ttClass = trangThaiColors[item.trangThai] || 'bg-light text-dark border-secondary-subtle';
+
+        return `
+        <tr>
+          <td><span class="fw-bold text-primary">${item.maGT}</span></td>
+          <td>
+            <span
+              class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold"
+              style="cursor: default; font-family: monospace; font-size: 0.85rem;"
+              data-bs-toggle="tooltip"
+              data-bs-title="${tenDA.replace(/"/g, '&quot;')}"
+            >${item.maDA}</span>
+          </td>
+          <td>${item.tenGT}</td>
+          <td><span class="badge ${loaiClass} border">${item.loaiGT || '—'}</span></td>
+          <td>${formatCurrency(item.giaGT)}</td>
+          <td><span class="badge ${ttClass} border">${item.trangThai || '—'}</span></td>
+          <td class="text-end">
+            <button class="btn btn-outline-primary btn-sm p-1 rounded-2" onclick="viewRecord('goithau', '${item.maGT}')" title="Xem/Sửa" style="width: 28px; height: 28px; padding: 0;"><i class="bi bi-eye"></i></button>
+            ${isManager ? `<button class="btn btn-outline-danger btn-sm p-1 rounded-2" onclick="deleteRecord('goithau', '${item.maGT}')" title="Xóa" style="width: 28px; height: 28px; padding: 0;"><i class="bi bi-trash3"></i></button>` : ''}
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Lưu trữ dữ liệu hợp đồng để filter
+    let _contractProjectMap = {};
+
+    function renderContracts(contracts, acceptances, projectMap) {
+      projectMap = projectMap || {};
+      _allContracts = contracts;
+      _contractProjectMap = projectMap;
+
+      // Populate filter Tên HĐ (unique, multi-select)
+      const tenHDSelect = document.getElementById('filter-tenHD');
+      const uniqueTen = [...new Set(contracts.map(c => c.tenHD).filter(Boolean))].sort();
+      tenHDSelect.innerHTML = `<option value="__all__" selected>— Tất cả —</option>` +
+        uniqueTen.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join('');
+
+      // Hiện filter bar
+      const bar = document.getElementById('contracts-filter-bar');
+      bar.style.removeProperty('display');
+      bar.style.display = 'flex';
+
+      filterContracts();
+    }
+
+    function filterContracts() {
+      const tenHDSelect = document.getElementById('filter-tenHD');
+      const trangThaiVal = document.getElementById('filter-trangThai').value;
+
+      // Lấy các Tên HĐ được chọn
+      const selectedTen = Array.from(tenHDSelect.selectedOptions).map(o => o.value);
+      const filterAll = selectedTen.includes('__all__') || selectedTen.length === 0;
+
+      const filtered = _allContracts.filter(item => {
+        const matchTen = filterAll || selectedTen.includes(item.tenHD);
+        const matchTT  = trangThaiVal === '__all__' || item.trangThai === trangThaiVal;
+        return matchTen && matchTT;
+      });
+
+      const projectMap = _contractProjectMap;
+      const tbody = document.getElementById('body-contracts');
+
+      if (!filtered.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-muted"><i class="bi bi-inbox me-2"></i>Không có dữ liệu phù hợp</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(item => {
+        const luyKeTT = Number(item.luyKeThanhToan || 0);
+        let rawPct = Number(item.lkPercent || 0);
+        const percent = rawPct > 1 ? rawPct : rawPct * 100;
+
+        const cleanDA = item.maDA ? item.maDA.toString().trim() : '';
+        const tenDA = projectMap[cleanDA] || item.maDA || '—';
+        const safeTitle = tenDA.replace(/"/g, '&quot;');
+
+        // Badge màu theo trạng thái (hiển thị inline trong row để dễ nhận biết)
+        const badgeMap = {
+          'Đang thực hiện': 'bg-primary-subtle text-primary border-primary',
+          'Đã nghiệm thu':  'bg-success-subtle text-success border-success',
+          'Thanh lý':       'bg-secondary-subtle text-secondary border-secondary',
+          'Tạm dừng':       'bg-warning-subtle text-warning border-warning',
+          'Hủy bỏ':         'bg-danger-subtle text-danger border-danger',
+        };
+        const badgeClass = badgeMap[item.trangThai] || 'bg-info-subtle text-info border-info';
+
+        // Chấm màu nhỏ thay thế cột Trạng thái
+        const dot = `<span class="badge ${badgeClass} border" style="width:8px;height:8px;padding:0;border-radius:50%;display:inline-block;" title="${item.trangThai || ''}"></span>`;
+
+        return `
+          <tr>
+            <td><span class="fw-bold text-primary">${item.maHD}</span></td>
+            <td>
+              <span
+                class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold"
+                style="cursor: default; font-family: monospace; font-size: 0.85rem;"
+                data-bs-toggle="tooltip"
+                data-bs-title="${safeTitle}"
+              >${item.maDA || '—'}</span>
+            </td>
+            <td style="max-width: 220px;">
+              <div class="d-flex align-items-center gap-2">
+                ${dot}
+                <span class="text-truncate" title="${(item.tenHD||'').replace(/"/g,'&quot;')}">${item.tenHD || '—'}</span>
+              </div>
+            </td>
+            <td>${formatCurrency(item.giaHD)}</td>
+            <td class="text-info fw-bold">${formatCurrency(item.giaQuyetToan)}</td>
+            <td class="text-success fw-bold">${formatCurrency(luyKeTT)}</td>
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <div class="progress flex-grow-1" style="height: 6px;">
+                  <div class="progress-bar bg-success" style="width: ${Math.min(percent, 100)}%"></div>
+                </div>
+                <small class="fw-bold">${percent.toFixed(2)}%</small>
+              </div>
+            </td>
+            <td class="text-end">
+              <button class="btn btn-outline-primary btn-sm p-1 rounded-2" onclick="viewRecord('hopdong', '${item.maHD}')" title="Xem/Sửa" style="width: 28px; height: 28px; padding: 0;"><i class="bi bi-eye"></i></button>
+              ${isManager ? `<button class="btn btn-outline-danger btn-sm p-1 rounded-2" onclick="deleteRecord('hopdong', '${item.maHD}')" title="Xóa" style="width: 28px; height: 28px; padding: 0;"><i class="bi bi-trash3"></i></button>` : ''}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Re-init tooltips
+      tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, { placement: 'top', trigger: 'hover' });
+      });
+    }
+
+
+    function renderAppendix(data, projectMap, contractMap) {
+      projectMap = projectMap || {};
+      contractMap = contractMap || {};
+      const tbody = document.getElementById('body-appendix');
+      
+      if (!data || !data.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-muted"><i class="bi bi-inbox me-2"></i>Không có phụ lục hợp đồng</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = data.map(item => {
+        const cleanDA = item.maDA ? item.maDA.toString().trim() : '';
+        const cleanHD = item.maHD ? item.maHD.toString().trim() : '';
+        
+        const tenDA = projectMap[cleanDA] || item.maDA || '—';
+        // Lookup hợp đồng bằng cả maDA + maHD đã chuẩn hóa để tránh trùng lặp giữa các dự án
+        const contractKey = cleanDA + '_' + cleanHD;
+        const tenHD = contractMap[contractKey] || item.maHD || '—';
+        const safeTitleDA = tenDA.replace(/"/g, '&quot;');
+        const safeTitleHD = tenHD.replace(/"/g, '&quot;');
+
+        return `
+        <tr>
+          <td><span class="fw-bold text-info">${item.maPLHD}</span></td>
+          <td>
+            <span
+              class="fw-semibold text-secondary"
+              style="cursor: default; border-bottom: 1px dashed #6c757d;"
+              data-bs-toggle="tooltip"
+              data-bs-title="${safeTitleHD}"
+            >${item.maHD || '—'}</span>
+          </td>
+          <td>
+            <span
+              class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold"
+              style="cursor: default; font-family: monospace; font-size: 0.85rem;"
+              data-bs-toggle="tooltip"
+              data-bs-title="${safeTitleDA}"
+            >${item.maDA || '—'}</span>
+          </td>
+          <td class="text-truncate" style="max-width: 200px;" title="${(item.noiDung||'').replace(/"/g,'&quot;')}">${item.noiDung || '—'}</td>
+          <td>${formatDate(item.ngayKy)}</td>
+          <td class="text-success fw-bold">${formatCurrency(item.giaTriPL)}</td>
+          <td class="fw-semibold text-warning">${item.giaHan ? item.giaHan + ' ngày' : '—'}</td>
+          <td class="text-end">
+            <button class="btn btn-outline-primary btn-sm p-1 rounded-2" onclick="viewRecord('phuluc', '${item.maPLHD}')" title="Xem/Sửa" style="width: 28px; height: 28px; padding: 0;"><i class="bi bi-eye"></i></button>
+            ${isManager ? `<button class="btn btn-outline-danger btn-sm p-1 rounded-2" onclick="deleteRecord('phuluc', '${item.maPLHD}')" title="Xóa" style="width: 28px; height: 28px; padding: 0;"><i class="bi bi-trash3"></i></button>` : ''}
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderAcceptance(data, projectMap, contractInfoMap) {
+      projectMap = projectMap || {};
+      contractInfoMap = contractInfoMap || {};
+      const tbody = document.getElementById('body-acceptance');
+      
+      if (!data || !data.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-muted"><i class="bi bi-inbox me-2"></i>Không có hồ sơ nghiệm thu</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = data.map(item => {
+        const cleanHD = item.maHD ? item.maHD.toString().trim() : '';
+        const cleanDA = item.maDA ? item.maDA.toString().trim() : '';
+        const info = contractInfoMap[cleanDA + '_' + cleanHD] || {};
+        const tenDA = projectMap[cleanDA] || cleanDA || '—';
+        const safeTitleDA = tenDA.replace(/"/g, '&quot;');
+
+        // Tính lũy kế nghiệm thu (dựa trên _allAcceptances gốc và cả maHD + maDA)
+        const currentLan = Number(item.lanNT) || 0;
+        const sameContractAcpts = (_allAcceptances || []).filter(a => {
+          const aHD = a.maHD ? a.maHD.toString().trim() : '';
+          const aDA = a.maDA ? a.maDA.toString().trim() : '';
+          return aHD === cleanHD && aDA === cleanDA;
+        });
+
+        let luyKeAcpt = 0;
+        sameContractAcpts.forEach(a => {
+          const lan = Number(a.lanNT) || 0;
+          if (lan <= currentLan) {
+            luyKeAcpt += Number(a.giaTriNT || 0);
+          }
+        });
+
+        return `
+        <tr>
+          <td><span class="fw-bold text-info">${item.maHSNT}</span></td>
+          <td><small class="text-muted">${item.maHD || '—'}</small></td>
+          <td>
+            <span
+              class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold"
+              style="cursor: default; font-family: monospace; font-size: 0.85rem;"
+              data-bs-toggle="tooltip"
+              data-bs-title="${safeTitleDA}"
+            >${cleanDA || '—'}</span>
+          </td>
+          <td class="text-center">Lần ${item.lanNT || '0'}</td>
+          <td>${formatDate(item.ngayNT)}</td>
+          <td class="fw-bold text-success">${formatCurrency(item.giaTriNT)}</td>
+          <td class="fw-bold text-primary">${formatCurrency(luyKeAcpt)}</td>
+          <td class="text-end">
+            <button class="btn btn-outline-primary btn-sm p-1 rounded-2" onclick="viewRecord('nghiemthu', '${item.maHSNT}')" title="Xem/Sửa" style="width: 28px; height: 28px; padding: 0;"><i class="bi bi-eye"></i></button>
+            ${isManager ? `<button class="btn btn-outline-danger btn-sm p-1 rounded-2" onclick="deleteRecord('nghiemthu', '${item.maHSNT}')" title="Xóa" style="width: 28px; height: 28px; padding: 0;"><i class="bi bi-trash3"></i></button>` : ''}
+          </td>
+        </tr>`;
+      }).join('');
+
+      // Re-init tooltips sau khi render xong các dòng Nghiệm thu
+      tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el, { placement: 'top', trigger: 'hover' });
+      });
+    }
+
+    // Biến lưu trữ lọc Nghiệm thu
+    let _allAcceptances = [];
+    let _acptProjectMap = {};
+    let _acptContractInfoMap = {};
+
+    function initAcceptanceFilter(data, projectMap, contractInfoMap) {
+      _allAcceptances = data;
+      _acptProjectMap = projectMap;
+      _acptContractInfoMap = contractInfoMap;
+
+      const bar = document.getElementById('acceptance-filter-bar');
+      if (bar) {
+        bar.style.removeProperty('display');
+        bar.style.display = 'flex';
+      }
+
+      filterAcceptance();
+    }
+
+    function filterAcceptance() {
+      const loaiGTSelect = document.getElementById('filter-acpt-loaiGT');
+      const trangThaiVal = document.getElementById('filter-acpt-trangThai').value;
+
+      const selectedLoai = Array.from(loaiGTSelect.selectedOptions).map(o => o.value);
+      const filterAllLoai = selectedLoai.includes('__all__') || selectedLoai.length === 0;
+
+      const filtered = _allAcceptances.filter(item => {
+        const cleanHD = item.maHD ? item.maHD.toString().trim() : '';
+        const cleanDA = item.maDA ? item.maDA.toString().trim() : '';
+        const info = _acptContractInfoMap[cleanDA + '_' + cleanHD] || {};
+        const loaiGT = info.loaiGT || '';
+
+        let trangThai = item.trangThai || '';
+        if (!trangThai) {
+          for (const k in item) {
+            const ck = k.toLowerCase().normalize('NFC').trim();
+            if (ck === 'trangthai' || ck === 'trạng thái' || ck === 'trạng thái hsnt' || ck === 'tranh thái hsnt') {
+              trangThai = item[k];
+              break;
+            }
+          }
+        }
+        trangThai = (trangThai || '').toString().trim();
+
+        const matchLoai = filterAllLoai || selectedLoai.includes(loaiGT);
+        const cleanTT = trangThai.toLowerCase().normalize('NFC').trim();
+        const cleanVal = trangThaiVal.toLowerCase().normalize('NFC').trim();
+        const matchTT   = trangThaiVal === '__all__' || cleanTT === cleanVal;
+        return matchLoai && matchTT;
+      });
+
+      renderAcceptance(filtered, _acptProjectMap, _acptContractInfoMap);
+    }
+
+    function formatCurrency(val) {
+      if (!val) return '0 đ';
+      return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '—';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+
+    // Biến trạng thái chỉnh sửa
+    let _currentEditType = null;
+    let _currentEditId = null;
+
+    // ─── DISPATCH XEM CHI TIẾT ──────────────────────────────────────────────
+    async function viewRecord(type, id) {
+      if (type === 'goithau') {
+        await viewGoiThau(id);
+      } else if (type === 'hopdong') {
+        await viewHopDong(id);
+      } else if (type === 'phuluc') {
+        await viewPhuLuc(id);
+      } else if (type === 'nghiemthu') {
+        await viewNghiemThu(id);
+      } else {
+        alert(`Chức năng Xem chi tiết ${type} #${id} đang được xây dựng.`);
+      }
+    }
+
+    async function viewGoiThau(maGT) {
+      _currentEditType = 'goithau';
+      _currentEditId = maGT;
+
+      // Hiện modal ở trạng thái loading
+      const modalEl = document.getElementById('modalViewGoiThau');
+      const modal = new bootstrap.Modal(modalEl);
+      document.getElementById('gt-modal-loading').classList.remove('d-none');
+      document.getElementById('gt-modal-body').classList.add('d-none');
+      document.getElementById('gt-modal-code').textContent = maGT;
+      document.getElementById('btnSaveGoiThau').classList.add('d-none');
+      if (!isManager) {
+        document.getElementById('btnEditGoiThau').classList.add('d-none');
+      } else {
+        document.getElementById('btnEditGoiThau').classList.remove('d-none');
+      }
+      // Reset readonly
+      ['gt-view-tenGT','gt-view-loaiGT','gt-view-hinhThucLCNT','gt-view-giaGT','gt-view-ghiChu'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.setAttribute('readonly', true);
+      });
+      modal.show();
+
+      try {
+        // Tải chi tiết gói thầu, danh sách dự án lấy từ biến toàn cục _allProjects
+        const gt = await API.get('goithau', maGT);
+        const duan = _allProjects;
+
+        if (!gt) throw new Error('Không tìm thấy gói thầu #' + maGT);
+
+        // Build project map
+        const projectMap = {};
+        (duan || []).forEach(p => { if (p.maDA) projectMap[p.maDA] = p.tenDA || p.maDA; });
+
+        // Điền dữ liệu
+        document.getElementById('gt-view-tenDA').textContent = projectMap[gt.maDA] || gt.maDA || '—';
+        document.getElementById('gt-view-tenGT').value = gt.tenGT || '';
+        document.getElementById('gt-view-loaiGT').value = gt.loaiGT || '';
+        document.getElementById('gt-view-hinhThucLCNT').value = gt.hinhThucLCNT || '';
+        document.getElementById('gt-view-giaGT').value = formatCurrency(gt.giaGT);
+        document.getElementById('gt-view-ghiChu').value = gt.ghiChu || '';
+
+        // Badge trạng thái
+        const trangThaiColors = {
+          'Đã hoàn thành': 'bg-success-subtle text-success border-success',
+          'Đang tổ chức LCNT': 'bg-warning-subtle text-warning border-warning',
+          'Chưa triển khai': 'bg-secondary-subtle text-secondary border-secondary',
+        };
+        const badgeClass = trangThaiColors[gt.trangThai] || 'bg-light text-dark';
+        document.getElementById('gt-view-trangThai').innerHTML =
+          `<span class="badge ${badgeClass} border px-3 py-2 fs-6">${gt.trangThai || '—'}</span>`;
+
+        // File đính kèm
+        const fileEl = document.getElementById('gt-view-file');
+        if (gt.file && gt.file.trim()) {
+          const files = gt.file.split('\n').filter(f => f.trim());
+          fileEl.innerHTML = files.map(f => {
+            const parts = f.split('|');
+            const name = parts.length > 1 ? parts[0] : 'Xem file';
+            const url  = parts.length > 1 ? parts[1] : parts[0];
+            return `<a href="${url}" target="_blank" class="d-flex align-items-center gap-2 text-decoration-none text-primary py-1">
+              <i class="bi bi-file-earmark-pdf fs-5"></i>
+              <span>${name}</span>
+              <i class="bi bi-box-arrow-up-right ms-auto small"></i>
+            </a>`;
+          }).join('<hr class="my-1">');
+        } else {
+          fileEl.innerHTML = '<span class="text-muted small"><i class="bi bi-paperclip me-1"></i>Chưa có file đính kèm</span>';
+        }
+
+        // Chuyển sang body content
+        document.getElementById('gt-modal-loading').classList.add('d-none');
+        document.getElementById('gt-modal-body').classList.remove('d-none');
+
+      } catch (err) {
+        document.getElementById('gt-modal-loading').innerHTML =
+          `<div class="text-center py-5 text-danger"><i class="bi bi-x-circle fs-3"></i><p class="mt-2">${err.message}</p></div>`;
+      }
+    }
+
+    function enableEditGoiThau() {
+      // Mở khóa các trường text
+      ['gt-view-tenGT', 'gt-view-giaGT', 'gt-view-ghiChu'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.removeAttribute('readonly'); el.classList.add('border-primary'); }
+      });
+
+      // Ẩn input và hiện select cho Loại GT
+      const loaiInput = document.getElementById('gt-view-loaiGT');
+      const loaiSelect = document.getElementById('gt-edit-loaiGT');
+      if (loaiInput && loaiSelect) {
+        loaiSelect.value = loaiInput.value;
+        loaiInput.classList.add('d-none');
+        loaiSelect.classList.remove('d-none');
+      }
+
+      // Ẩn input và hiện select cho Hình thức LCNT
+      const lcntInput = document.getElementById('gt-view-hinhThucLCNT');
+      const lcntSelect = document.getElementById('gt-edit-hinhThucLCNT');
+      if (lcntInput && lcntSelect) {
+        lcntSelect.value = lcntInput.value;
+        lcntInput.classList.add('d-none');
+        lcntSelect.classList.remove('d-none');
+      }
+
+      // Hiện khu vực upload file
+      document.getElementById('gt-upload-section').classList.remove('d-none');
+
+      // Hiện nút Lưu, Ẩn nút Sửa
+      document.getElementById('btnSaveGoiThau').classList.remove('d-none');
+      document.getElementById('btnEditGoiThau').classList.add('d-none');
+    }
+
+    function previewSelectedFile(input) {
+      const preview = document.getElementById('gt-file-preview');
+      const nameEl = document.getElementById('gt-file-name');
+      if (input.files && input.files[0]) {
+        nameEl.textContent = input.files[0].name;
+        preview.classList.remove('d-none');
+      } else {
+        preview.classList.add('d-none');
+      }
+    }
+
+    async function saveGoiThau() {
+      const btn = document.getElementById('btnSaveGoiThau');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang lưu...';
+
+      try {
+        let fileUrl = '';
+
+        // Bước 1: Upload file nếu có chọn file mới
+        const fileInput = document.getElementById('gt-file-input');
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          const file = fileInput.files[0];
+          const progressEl = document.getElementById('gt-upload-progress');
+          progressEl.classList.remove('d-none');
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang tải file...';
+
+          // Đọc file thành base64
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          // Lấy thông tin dự án hiện tại để upload đúng thư mục
+          const gt = await API.get('goithau', _currentEditId);
+          const duanList = _allProjects;
+          const duanInfo = duanList.find(d => d.maDA === gt.maDA) || {};
+
+          // Gọi API upload lên Drive thư mục dự án
+          const res = await apiPost({
+            action: 'upload_project_file',
+            maDA: gt.maDA,
+            namThucHien: duanInfo.namThucHien || new Date().getFullYear(),
+            tenDA: duanInfo.tenDA || gt.maDA,
+            fileName: file.name,
+            base64Data: base64
+          });
+          fileUrl = res; // URL file trên Drive
+          progressEl.classList.add('d-none');
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Lưu dữ liệu...';
+        }
+
+        // Bước 2: Lấy giá trị từ các trường
+        const giaRaw = document.getElementById('gt-view-giaGT').value.replace(/[^0-9]/g, '');
+        const loaiGT = document.getElementById('gt-edit-loaiGT').classList.contains('d-none')
+          ? document.getElementById('gt-view-loaiGT').value
+          : document.getElementById('gt-edit-loaiGT').value;
+        const hinhThuc = document.getElementById('gt-edit-hinhThucLCNT').classList.contains('d-none')
+          ? document.getElementById('gt-view-hinhThucLCNT').value
+          : document.getElementById('gt-edit-hinhThucLCNT').value;
+
+        const data = {
+          tenGT:         document.getElementById('gt-view-tenGT').value,
+          loaiGT:        loaiGT,
+          hinhThucLCNT:  hinhThuc,
+          giaGT:         giaRaw ? Number(giaRaw) : '',
+          ghiChu:        document.getElementById('gt-view-ghiChu').value,
+        };
+
+        // Chỉ cập nhật URL file nếu có upload mới
+        if (fileUrl) data.file = fileUrl;
+
+        await API.update('goithau', _currentEditId, data);
+        bootstrap.Modal.getInstance(document.getElementById('modalViewGoiThau')).hide();
+        await loadAllData();
+
+      } catch (err) {
+        alert('Lỗi khi lưu: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save me-1"></i>Lưu và Đóng';
+      }
+    }
+
+    // ─── XEM CHI TIẾT HỢP ĐỒNG ───────────────────────────────────────────────
+    async function viewHopDong(maHD) {
+      _currentEditType = 'hopdong';
+      _currentEditId = maHD;
+
+      const modalEl = document.getElementById('modalViewHopDong');
+      const modal = new bootstrap.Modal(modalEl);
+
+      // Reset về trạng thái loading
+      document.getElementById('hd-modal-loading').classList.remove('d-none');
+      document.getElementById('hd-modal-body').classList.add('d-none');
+      document.getElementById('hd-modal-code').textContent = maHD;
+      document.getElementById('btnSaveHopDong').classList.add('d-none');
+      if (!isManager) {
+        document.getElementById('btnEditHopDong').classList.add('d-none');
+      } else {
+        document.getElementById('btnEditHopDong').classList.remove('d-none');
+      }
+
+      // Reset các trường về readonly
+      ['hd-view-tenHD','hd-view-giaHD','hd-view-giaQuyetToan',
+       'hd-view-ngayKy','hd-view-ngayHieuLuc','hd-view-thoiGian'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.setAttribute('readonly', true); el.classList.remove('border-primary','border-success'); }
+      });
+      // Reset selects về d-none
+      ['hd-edit-loaiHD','hd-edit-trangThai','hd-edit-nhaThau'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('d-none');
+      });
+      ['hd-view-loaiHD','hd-view-nhaThau'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.classList.remove('d-none'); el.removeAttribute('readonly'); el.setAttribute('readonly', true); }
+      });
+      document.getElementById('hd-view-trangThai').classList.remove('d-none');
+      document.getElementById('hd-upload-section').classList.add('d-none');
+      const fi = document.getElementById('hd-file-input');
+      if (fi) fi.value = '';
+      document.getElementById('hd-file-preview').classList.add('d-none');
+
+      modal.show();
+
+      try {
+        const hd = await API.get('hopdong', maHD);
+        const duan = _allProjects;
+
+        if (!hd) throw new Error('Không tìm thấy hợp đồng #' + maHD);
+
+        // Tên dự án
+        const projectMap = {};
+        (duan || []).forEach(p => { if (p.maDA) projectMap[p.maDA] = p.tenDA || p.maDA; });
+        document.getElementById('hd-view-tenDA').textContent = projectMap[hd.maDA] || hd.maDA || '—';
+
+        // Điền các trường
+        document.getElementById('hd-view-maHD').value   = hd.maHD || '';
+        document.getElementById('hd-view-tenHD').value  = hd.tenHD || '';
+        document.getElementById('hd-view-loaiHD').value = hd.loaiHD || '';
+        document.getElementById('hd-view-nhaThau').value = hd.nhaThau || '';
+        document.getElementById('hd-view-giaHD').value   = formatCurrency(hd.giaHD);
+        document.getElementById('hd-view-giaQuyetToan').value = formatCurrency(hd.giaQuyetToan);
+        document.getElementById('hd-view-thoiGian').value = hd.thoiGian || '';
+
+        // Ngày ký
+        let dateKyStr = '';
+        if (hd.ngayKy) {
+          const d = new Date(hd.ngayKy);
+          if (!isNaN(d.getTime())) dateKyStr = d.toISOString().split('T')[0];
+        }
+        setDateInputValue('hd-view-ngayKy', dateKyStr);
+
+        // Ngày hiệu lực
+        let dateHieuLucStr = '';
+        if (hd.ngayHieuLuc) {
+          const d = new Date(hd.ngayHieuLuc);
+          if (!isNaN(d.getTime())) dateHieuLucStr = d.toISOString().split('T')[0];
+        }
+        setDateInputValue('hd-view-ngayHieuLuc', dateHieuLucStr);
+
+        // Badge trạng thái
+        const badgeMap = {
+          'Đang thực hiện': 'bg-primary-subtle text-primary border-primary',
+          'Đã nghiệm thu':  'bg-success-subtle text-success border-success',
+          'Thanh lý':       'bg-secondary-subtle text-secondary border-secondary',
+          'Tạm dừng':       'bg-warning-subtle text-warning border-warning',
+          'Hủy bỏ':         'bg-danger-subtle text-danger border-danger',
+        };
+        const bc = badgeMap[hd.trangThai] || 'bg-info-subtle text-info border-info';
+        document.getElementById('hd-view-trangThai').innerHTML =
+          `<span class="badge ${bc} border px-3 py-2 fs-6">${hd.trangThai || '—'}</span>`;
+
+        // File
+        const fileEl = document.getElementById('hd-view-file');
+        if (hd.file && hd.file.trim()) {
+          const files = hd.file.split('\n').filter(f => f.trim());
+          fileEl.innerHTML = files.map(f => {
+            const parts = f.split('|');
+            const name = parts.length > 1 ? parts[0] : 'Xem file HĐ';
+            const url  = parts.length > 1 ? parts[1] : parts[0];
+            return `<a href="${url}" target="_blank" class="d-flex align-items-center gap-2 text-decoration-none text-success py-1">
+              <i class="bi bi-file-earmark-text fs-5"></i>
+              <span>${name}</span>
+              <i class="bi bi-box-arrow-up-right ms-auto small"></i>
+            </a>`;
+          }).join('<hr class="my-1">');
+        } else {
+          fileEl.innerHTML = '<span class="text-muted small"><i class="bi bi-paperclip me-1"></i>Chưa có file đính kèm</span>';
+        }
+
+        document.getElementById('hd-modal-loading').classList.add('d-none');
+        document.getElementById('hd-modal-body').classList.remove('d-none');
+
+      } catch (err) {
+        document.getElementById('hd-modal-loading').innerHTML =
+          `<div class="text-center py-5 text-danger"><i class="bi bi-x-circle fs-3"></i><p class="mt-2">${err.message}</p></div>`;
+      }
+    }
+
+    function enableEditHopDong() {
+      // Mở khóa text fields
+      ['hd-view-tenHD','hd-view-ngayKy','hd-view-ngayHieuLuc','hd-view-thoiGian'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.removeAttribute('readonly'); el.classList.add('border-success'); }
+      });
+      // Giá (nhập số)
+      ['hd-view-giaHD','hd-view-giaQuyetToan'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.removeAttribute('readonly'); el.classList.remove('text-success','text-info'); el.classList.add('border-success'); }
+      });
+
+      // Tên nhà thầu → select
+      const nhaThauInput = document.getElementById('hd-view-nhaThau');
+      const nhaThauSelect = document.getElementById('hd-edit-nhaThau');
+      if (nhaThauInput && nhaThauSelect) {
+        nhaThauSelect.innerHTML = '<option value="">-- Chọn nhà thầu --</option>' +
+          _allContractors.map(c => `<option value="${c.tenNhaThau.replace(/"/g,'&quot;')}">${c.tenNhaThau}</option>`).join('');
+        nhaThauSelect.value = nhaThauInput.value || '';
+        nhaThauInput.classList.add('d-none');
+        nhaThauSelect.classList.remove('d-none');
+      }
+
+      // Loại HĐ → select
+      const loaiInput = document.getElementById('hd-view-loaiHD');
+      const loaiSelect = document.getElementById('hd-edit-loaiHD');
+      if (loaiInput && loaiSelect) {
+        loaiSelect.value = loaiInput.value;
+        loaiInput.classList.add('d-none');
+        loaiSelect.classList.remove('d-none');
+      }
+
+      // Trạng thái → select
+      const ttBadge = document.getElementById('hd-view-trangThai');
+      const ttSelect = document.getElementById('hd-edit-trangThai');
+      if (ttBadge && ttSelect) {
+        const current = ttBadge.querySelector('.badge')?.textContent?.trim() || '';
+        ttSelect.value = current;
+        ttBadge.classList.add('d-none');
+        ttSelect.classList.remove('d-none');
+      }
+
+      // Upload section
+      document.getElementById('hd-upload-section').classList.remove('d-none');
+
+      document.getElementById('btnSaveHopDong').classList.remove('d-none');
+      document.getElementById('btnEditHopDong').classList.add('d-none');
+    }
+
+    function previewHdFile(input) {
+      const preview = document.getElementById('hd-file-preview');
+      const nameEl  = document.getElementById('hd-file-name');
+      if (input.files && input.files[0]) {
+        nameEl.textContent = input.files[0].name;
+        preview.classList.remove('d-none');
+      } else {
+        preview.classList.add('d-none');
+      }
+    }
+
+    async function saveHopDong() {
+      const btn = document.getElementById('btnSaveHopDong');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang lưu...';
+
+      try {
+        let fileUrl = '';
+
+        // Upload file nếu có
+        const fileInput = document.getElementById('hd-file-input');
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          const file = fileInput.files[0];
+          document.getElementById('hd-upload-progress').classList.remove('d-none');
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang tải file...';
+
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          const hd = await API.get('hopdong', _currentEditId);
+          const duanList = _allProjects;
+          const duanInfo = duanList.find(d => d.maDA === hd.maDA) || {};
+
+          const res = await apiPost({
+            action: 'upload_project_file',
+            maDA: hd.maDA,
+            namThucHien: duanInfo.namThucHien || new Date().getFullYear(),
+            tenDA: duanInfo.tenDA || hd.maDA,
+            fileName: file.name,
+            base64Data: base64
+          });
+          fileUrl = res;
+          document.getElementById('hd-upload-progress').classList.add('d-none');
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Lưu dữ liệu...';
+        }
+
+        // Lấy giá trị
+        const giaHDRaw = document.getElementById('hd-view-giaHD').value.replace(/[^0-9]/g, '');
+        const giaQTRaw = document.getElementById('hd-view-giaQuyetToan').value.replace(/[^0-9]/g, '');
+
+        const loaiHD = document.getElementById('hd-edit-loaiHD').classList.contains('d-none')
+          ? document.getElementById('hd-view-loaiHD').value
+          : document.getElementById('hd-edit-loaiHD').value;
+
+        const trangThai = document.getElementById('hd-edit-trangThai').classList.contains('d-none')
+          ? (document.getElementById('hd-view-trangThai').querySelector('.badge')?.textContent?.trim() || '')
+          : document.getElementById('hd-edit-trangThai').value;
+
+        const nhaThau = document.getElementById('hd-edit-nhaThau').classList.contains('d-none')
+          ? document.getElementById('hd-view-nhaThau').value
+          : document.getElementById('hd-edit-nhaThau').value;
+
+        const data = {
+          tenHD:        document.getElementById('hd-view-tenHD').value,
+          loaiHD:       loaiHD,
+          nhaThau:      nhaThau,
+          giaHD:        giaHDRaw ? Number(giaHDRaw) : '',
+          giaQuyetToan: giaQTRaw ? Number(giaQTRaw) : '',
+          ngayKy:       document.getElementById('hd-view-ngayKy').value,
+          ngayHieuLuc:  document.getElementById('hd-view-ngayHieuLuc').value,
+          thoiGian:     document.getElementById('hd-view-thoiGian').value,
+          trangThai:    trangThai,
+        };
+        if (fileUrl) data.file = fileUrl;
+
+        await API.update('hopdong', _currentEditId, data);
+        bootstrap.Modal.getInstance(document.getElementById('modalViewHopDong')).hide();
+        await loadAllData();
+
+      } catch (err) {
+        alert('Lỗi khi lưu: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save me-1"></i>Lưu & Đóng';
+      }
+    }
+
+    // ─── XEM CHI TIẾT PHỤ LỤC HĐ ─────────────────────────────────────────────
+    async function viewPhuLuc(maPLHD) {
+      _currentEditType = 'phuluc';
+      _currentEditId = maPLHD;
+
+      const modalEl = document.getElementById('modalViewPhuLuc');
+      const modal = new bootstrap.Modal(modalEl);
+
+      // Reset về trạng thái loading
+      document.getElementById('pl-modal-loading').classList.remove('d-none');
+      document.getElementById('pl-modal-body').classList.add('d-none');
+      document.getElementById('pl-modal-code').textContent = maPLHD;
+      document.getElementById('btnSavePhuLuc').classList.add('d-none');
+      if (!isManager) {
+        document.getElementById('btnEditPhuLuc').classList.add('d-none');
+      } else {
+        document.getElementById('btnEditPhuLuc').classList.remove('d-none');
+      }
+
+      // Reset các trường về readonly
+      ['pl-view-noiDung','pl-view-ngayKy','pl-view-giaTriPL','pl-view-giaHan','pl-view-ghiChu'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.setAttribute('readonly', true); el.classList.remove('border-success'); }
+      });
+      // Reset nhà thầu select
+      const nhaThauSelect = document.getElementById('pl-edit-nhaThau');
+      if (nhaThauSelect) nhaThauSelect.classList.add('d-none');
+      const nhaThauInput = document.getElementById('pl-view-nhaThau');
+      if (nhaThauInput) { nhaThauInput.classList.remove('d-none'); nhaThauInput.removeAttribute('readonly'); nhaThauInput.setAttribute('readonly', true); }
+
+      document.getElementById('pl-upload-section').classList.add('d-none');
+      const fi = document.getElementById('pl-file-input');
+      if (fi) fi.value = '';
+      document.getElementById('pl-file-preview').classList.add('d-none');
+
+      modal.show();
+
+      try {
+        const pl = await API.get('phuluc', maPLHD);
+        const duanList = _allProjects;
+        const contractList = _allContracts;
+
+        if (!pl) throw new Error('Không tìm thấy phụ lục hợp đồng #' + maPLHD);
+
+        // Map tên dự án & tên hợp đồng (chuẩn hóa key)
+        const projectMap = {};
+        (duanList || []).forEach(p => {
+          if (p.maDA) {
+            const keyDA = p.maDA.toString().trim();
+            projectMap[keyDA] = p.tenDA || p.maDA;
+          }
+        });
+        const contractMap = {};
+        (contractList || []).forEach(c => {
+          if (c.maHD && c.maDA) {
+            const keyDA = c.maDA.toString().trim();
+            const keyHD = c.maHD.toString().trim();
+            contractMap[keyDA + '_' + keyHD] = c.tenHD || c.maHD;
+          }
+        });
+
+        const cleanDA = pl.maDA ? pl.maDA.toString().trim() : '';
+        const cleanHD = pl.maHD ? pl.maHD.toString().trim() : '';
+
+        document.getElementById('pl-view-tenDA').textContent = projectMap[cleanDA] || pl.maDA || '—';
+        const contractKey = cleanDA + '_' + cleanHD;
+        document.getElementById('pl-view-tenHD').textContent = contractMap[contractKey] || pl.maHD || '—';
+
+        // Điền các trường
+        document.getElementById('pl-view-maDA').value   = pl.maDA || '';
+        document.getElementById('pl-view-maHD').value   = pl.maHD || '';
+        document.getElementById('pl-view-maPLHD').value = pl.maPLHD || '';
+        document.getElementById('pl-view-nhaThau').value = pl.nhaThau || '';
+        document.getElementById('pl-view-noiDung').value = pl.noiDung || '';
+        document.getElementById('pl-view-giaHan').value  = pl.giaHan || '';
+        document.getElementById('pl-view-ghiChu').value  = pl.ghiChu || '';
+        document.getElementById('pl-view-giaTriPL').value = formatCurrency(pl.giaTriPL);
+
+        // Ngày ký
+        let datePLKyStr = '';
+        if (pl.ngayKy) {
+          const d = new Date(pl.ngayKy);
+          if (!isNaN(d.getTime())) datePLKyStr = d.toISOString().split('T')[0];
+        }
+        setDateInputValue('pl-view-ngayKy', datePLKyStr);
+
+        // File
+        const fileEl = document.getElementById('pl-view-file');
+        if (pl.file && pl.file.trim()) {
+          const files = pl.file.split('\n').filter(f => f.trim());
+          fileEl.innerHTML = files.map(f => {
+            const parts = f.split('|');
+            const name = parts.length > 1 ? parts[0] : 'Xem file PLHĐ';
+            const url  = parts.length > 1 ? parts[1] : parts[0];
+            return `<a href="${url}" target="_blank" class="d-flex align-items-center gap-2 text-decoration-none text-info py-1">
+              <i class="bi bi-file-earmark-text fs-5"></i>
+              <span>${name}</span>
+              <i class="bi bi-box-arrow-up-right ms-auto small"></i>
+            </a>`;
+          }).join('<hr class="my-1">');
+        } else {
+          fileEl.innerHTML = '<span class="text-muted small"><i class="bi bi-paperclip me-1"></i>Chưa có file đính kèm</span>';
+        }
+
+        document.getElementById('pl-modal-loading').classList.add('d-none');
+        document.getElementById('pl-modal-body').classList.remove('d-none');
+
+      } catch (err) {
+        document.getElementById('pl-modal-loading').innerHTML =
+          `<div class="text-center py-5 text-danger"><i class="bi bi-x-circle fs-3"></i><p class="mt-2">${err.message}</p></div>`;
+      }
+    }
+
+    function enableEditPhuLuc() {
+      // Mở khóa text fields
+      ['pl-view-noiDung','pl-view-ngayKy','pl-view-giaHan','pl-view-ghiChu'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.removeAttribute('readonly'); el.classList.add('border-success'); }
+      });
+      // Giá
+      const giaEl = document.getElementById('pl-view-giaTriPL');
+      if (giaEl) {
+        giaEl.removeAttribute('readonly');
+        giaEl.classList.add('border-success');
+      }
+
+      // Tên nhà thầu → select
+      const nhaThauInput = document.getElementById('pl-view-nhaThau');
+      const nhaThauSelect = document.getElementById('pl-edit-nhaThau');
+      if (nhaThauInput && nhaThauSelect) {
+        nhaThauSelect.innerHTML = '<option value="">-- Chọn nhà thầu --</option>' +
+          _allContractors.map(c => `<option value="${c.tenNhaThau.replace(/"/g,'&quot;')}">${c.tenNhaThau}</option>`).join('');
+        nhaThauSelect.value = nhaThauInput.value || '';
+        nhaThauInput.classList.add('d-none');
+        nhaThauSelect.classList.remove('d-none');
+      }
+
+      // Upload section
+      document.getElementById('pl-upload-section').classList.remove('d-none');
+
+      document.getElementById('btnSavePhuLuc').classList.remove('d-none');
+      document.getElementById('btnEditPhuLuc').classList.add('d-none');
+    }
+
+    function previewPlFile(input) {
+      const preview = document.getElementById('pl-file-preview');
+      const nameEl  = document.getElementById('pl-file-name');
+      if (input.files && input.files[0]) {
+        nameEl.textContent = input.files[0].name;
+        preview.classList.remove('d-none');
+      } else {
+        preview.classList.add('d-none');
+      }
+    }
+
+    async function savePhuLuc() {
+      const btn = document.getElementById('btnSavePhuLuc');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang lưu...';
+
+      try {
+        let fileUrl = '';
+
+        // Upload file nếu có
+        const fileInput = document.getElementById('pl-file-input');
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          const file = fileInput.files[0];
+          document.getElementById('pl-upload-progress').classList.remove('d-none');
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang tải file...';
+
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          const pl = await API.get('phuluc', _currentEditId);
+          const duanList = _allProjects;
+          const duanInfo = duanList.find(d => d.maDA === pl.maDA) || {};
+
+          const res = await apiPost({
+            action: 'upload_project_file',
+            maDA: pl.maDA,
+            namThucHien: duanInfo.namThucHien || new Date().getFullYear(),
+            tenDA: duanInfo.tenDA || pl.maDA,
+            fileName: file.name,
+            base64Data: base64
+          });
+          fileUrl = res;
+          document.getElementById('pl-upload-progress').classList.add('d-none');
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Lưu dữ liệu...';
+        }
+
+        // Lấy giá trị
+        const giaRaw = document.getElementById('pl-view-giaTriPL').value.replace(/[^0-9\-]/g, '');
+
+        const nhaThau = document.getElementById('pl-edit-nhaThau').classList.contains('d-none')
+          ? document.getElementById('pl-view-nhaThau').value
+          : document.getElementById('pl-edit-nhaThau').value;
+
+        const data = {
+          noiDung:      document.getElementById('pl-view-noiDung').value,
+          giaTriPL:     giaRaw ? Number(giaRaw) : '',
+          ngayKy:       document.getElementById('pl-view-ngayKy').value,
+          giaHan:       document.getElementById('pl-view-giaHan').value ? Number(document.getElementById('pl-view-giaHan').value) : '',
+          ghiChu:       document.getElementById('pl-view-ghiChu').value,
+          nhaThau:      nhaThau,
+        };
+        if (fileUrl) data.file = fileUrl;
+
+        await API.update('phuluc', _currentEditId, data);
+        bootstrap.Modal.getInstance(document.getElementById('modalViewPhuLuc')).hide();
+        await loadAllData();
+
+      } catch (err) {
+        alert('Lỗi khi lưu: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save me-1"></i>Lưu & Đóng';
+      }
+    }
+
+
+    // ─── XEM CHI TIẾT NGHIỆM THU ──────────────────────────────────────────────
+    async function viewNghiemThu(maHSNT) {
+      _currentEditType = 'nghiemthu';
+      _currentEditId = maHSNT;
+
+      const modalEl = document.getElementById('modalViewNghiemThu');
+      const modal = new bootstrap.Modal(modalEl);
+
+      // Reset về trạng thái loading
+      document.getElementById('nt-modal-loading').classList.remove('d-none');
+      document.getElementById('nt-modal-body').classList.add('d-none');
+      document.getElementById('nt-modal-code').textContent = maHSNT;
+      document.getElementById('btnSaveNghiemThu').classList.add('d-none');
+      if (!isManager) {
+        document.getElementById('btnEditNghiemThu').classList.add('d-none');
+      } else {
+        document.getElementById('btnEditNghiemThu').classList.remove('d-none');
+      }
+
+      // Reset các trường về readonly
+      ['nt-view-lanNT','nt-view-ngayNT','nt-view-giaTriNT','nt-view-ghiChu'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.setAttribute('readonly', true); el.classList.remove('border-success'); }
+      });
+      // Reset nhà thầu select
+      const ntNhaThauSelect = document.getElementById('nt-edit-nhaThau');
+      if (ntNhaThauSelect) ntNhaThauSelect.classList.add('d-none');
+      const ntNhaThauInput = document.getElementById('nt-view-nhaThau');
+      if (ntNhaThauInput) { ntNhaThauInput.classList.remove('d-none'); ntNhaThauInput.removeAttribute('readonly'); ntNhaThauInput.setAttribute('readonly', true); }
+
+      // Reset select
+      document.getElementById('nt-edit-trangThai').classList.add('d-none');
+      document.getElementById('nt-view-trangThaiText').classList.remove('d-none');
+
+      // Ẩn upload section
+      document.getElementById('nt-upload-section').classList.add('d-none');
+      const fi = document.getElementById('nt-file-input');
+      if (fi) fi.value = '';
+      document.getElementById('nt-file-preview').classList.add('d-none');
+
+      modal.show();
+
+      try {
+        // Tải song song: nghiệm thu + danh sách hợp đồng + danh sách dự án
+        const nt = await API.get('nghiemthu', maHSNT);
+        const ctrs = _allContracts;
+        const duan = _allProjects;
+
+        if (!nt) throw new Error('Không tìm thấy hồ sơ nghiệm thu #' + maHSNT);
+
+        // Tạo maps tra cứu thông tin
+        const projectMap = {};
+        (duan || []).forEach(p => { if (p.maDA) projectMap[p.maDA.toString().trim()] = p.tenDA || p.maDA; });
+
+        const contractMap = {};
+        (ctrs || []).forEach(c => {
+          if (c.maHD && c.maDA) {
+            const keyDA = c.maDA.toString().trim();
+            const keyHD = c.maHD.toString().trim();
+            contractMap[keyDA + '_' + keyHD] = {
+              maDA: keyDA,
+              tenHD: c.tenHD || c.maHD
+            };
+          }
+        });
+
+        // Tìm kiếm Hợp đồng và Dự án của Nghiệm thu này
+        const cleanHD = nt.maHD ? nt.maHD.toString().trim() : '';
+        const cleanDA = nt.maDA ? nt.maDA.toString().trim() : '';
+        const cInfo = contractMap[cleanDA + '_' + cleanHD] || {};
+        const tenDA = projectMap[cleanDA] || '—';
+        const tenHD = cInfo.tenHD || '—';
+
+        // Lấy trạng thái an toàn
+        let trangThai = nt.trangThai || '';
+        if (!trangThai) {
+          for (const k in nt) {
+            const ck = k.toLowerCase().normalize('NFC').trim();
+            if (ck === 'trangthai' || ck === 'trạng thái' || ck === 'trạng thái hsnt' || ck === 'tranh thái hsnt') {
+              trangThai = nt[k];
+              break;
+            }
+          }
+        }
+        trangThai = (trangThai || '—').toString().trim();
+
+        // Điền dữ liệu vào form
+        document.getElementById('nt-view-tenDA').textContent = tenDA;
+        document.getElementById('nt-view-tenHD').textContent = tenHD;
+        document.getElementById('nt-view-maDA').value = cleanDA;
+        document.getElementById('nt-view-maHD').value = nt.maHD || '';
+        document.getElementById('nt-view-maHSNT').value = nt.maHSNT || '';
+        document.getElementById('nt-view-nhaThau').value = nt.nhaThau || '';
+        document.getElementById('nt-view-lanNT').value = nt.lanNT || 0;
+        document.getElementById('nt-view-giaTriNT').value = formatCurrency(nt.giaTriNT);
+        document.getElementById('nt-view-trangThaiText').value = trangThai;
+        document.getElementById('nt-view-ghiChu').value = nt.ghiChu || '';
+
+        // Định dạng ngày
+        let dateNTStr = '';
+        if (nt.ngayNT) {
+          const d = new Date(nt.ngayNT);
+          if (!isNaN(d.getTime())) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            dateNTStr = `${y}-${m}-${day}`;
+          }
+        }
+        setDateInputValue('nt-view-ngayNT', dateNTStr);
+
+        // Render file đính kèm
+        const fileEl = document.getElementById('nt-view-file');
+        if (nt.file && nt.file.trim()) {
+          const files = nt.file.split('\n').filter(f => f.trim());
+          fileEl.innerHTML = files.map(f => {
+            const parts = f.split('|');
+            const name = parts.length > 1 ? parts[0] : 'Xem file';
+            const url  = parts.length > 1 ? parts[1] : parts[0];
+            return `<a href="${url}" target="_blank" class="d-flex align-items-center gap-2 text-decoration-none text-success py-1">
+              <i class="bi bi-file-earmark-pdf fs-5"></i>
+              <span>${name}</span>
+              <i class="bi bi-box-arrow-up-right ms-auto small"></i>
+            </a>`;
+          }).join('<hr class="my-1">');
+        } else {
+          fileEl.innerHTML = '<span class="text-muted small"><i class="bi bi-paperclip me-1"></i>Chưa có file quyết định</span>';
+        }
+
+        // Hiện body content
+        document.getElementById('nt-modal-loading').classList.add('d-none');
+        document.getElementById('nt-modal-body').classList.remove('d-none');
+
+      } catch (err) {
+        document.getElementById('nt-modal-loading').innerHTML =
+          `<div class="text-center py-5 text-danger"><i class="bi bi-x-circle fs-3"></i><p class="mt-2">${err.message}</p></div>`;
+      }
+    }
+
+    function enableEditNghiemThu() {
+      // Mở khóa các trường chỉnh sửa
+      ['nt-view-lanNT','nt-view-ngayNT','nt-view-giaTriNT','nt-view-ghiChu'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.removeAttribute('readonly'); el.classList.add('border-success'); }
+      });
+
+      // Tên nhà thầu → select
+      const nhaThauInput = document.getElementById('nt-view-nhaThau');
+      const nhaThauSelect = document.getElementById('nt-edit-nhaThau');
+      if (nhaThauInput && nhaThauSelect) {
+        nhaThauSelect.innerHTML = '<option value="">-- Chọn nhà thầu --</option>' +
+          _allContractors.map(c => `<option value="${c.tenNhaThau.replace(/"/g,'&quot;')}">${c.tenNhaThau}</option>`).join('');
+        nhaThauSelect.value = nhaThauInput.value || '';
+        nhaThauInput.classList.add('d-none');
+        nhaThauSelect.classList.remove('d-none');
+      }
+
+      // Hiện select Trạng thái
+      const vText = document.getElementById('nt-view-trangThaiText');
+      const eSelect = document.getElementById('nt-edit-trangThai');
+      if (vText && eSelect) {
+        eSelect.value = vText.value;
+        vText.classList.add('d-none');
+        eSelect.classList.remove('d-none');
+      }
+
+      // Hiện upload section
+      document.getElementById('nt-upload-section').classList.remove('d-none');
+
+      // Hiện nút Lưu và Ẩn nút Sửa
+      document.getElementById('btnSaveNghiemThu').classList.remove('d-none');
+      document.getElementById('btnEditNghiemThu').classList.add('d-none');
+    }
+
+    function previewNtFile(input) {
+      const preview = document.getElementById('nt-file-preview');
+      const nameEl = document.getElementById('nt-file-name');
+      if (input.files && input.files[0]) {
+        nameEl.textContent = input.files[0].name;
+        preview.classList.remove('d-none');
+      } else {
+        preview.classList.add('d-none');
+      }
+    }
+
+    async function saveNghiemThu() {
+      const btn = document.getElementById('btnSaveNghiemThu');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang lưu...';
+
+      try {
+        let fileUrl = '';
+        const fileInput = document.getElementById('nt-file-input');
+
+        // Lấy thông tin dự án hiện tại để upload đúng thư mục
+        const maDA = document.getElementById('nt-view-maDA').value;
+
+        // Upload file mới nếu người dùng chọn
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          const file = fileInput.files[0];
+          const progressEl = document.getElementById('nt-upload-progress');
+          progressEl.classList.remove('d-none');
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang tải file...';
+
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+
+          const duanList = _allProjects;
+          const duanInfo = duanList.find(d => d.maDA.toString().trim() === maDA.toString().trim()) || {};
+
+          const res = await apiPost({
+            action: 'upload_project_file',
+            maDA: maDA,
+            namThucHien: duanInfo.namThucHien || new Date().getFullYear(),
+            tenDA: duanInfo.tenDA || maDA,
+            fileName: file.name,
+            base64Data: base64
+          });
+          fileUrl = res; // URL file sau khi upload
+          progressEl.classList.add('d-none');
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Lưu dữ liệu...';
+        }
+
+        // Lấy dữ liệu từ form
+        const giaRaw = document.getElementById('nt-view-giaTriNT').value.replace(/[^0-9]/g, '');
+        const trangThai = document.getElementById('nt-edit-trangThai').classList.contains('d-none')
+          ? document.getElementById('nt-view-trangThaiText').value
+          : document.getElementById('nt-edit-trangThai').value;
+
+        const nhaThau = document.getElementById('nt-edit-nhaThau').classList.contains('d-none')
+          ? document.getElementById('nt-view-nhaThau').value
+          : document.getElementById('nt-edit-nhaThau').value;
+
+        const data = {
+          lanNT:     Number(document.getElementById('nt-view-lanNT').value) || 0,
+          ngayNT:    document.getElementById('nt-view-ngayNT').value,
+          giaTriNT:  giaRaw ? Number(giaRaw) : '',
+          trangThai: trangThai,
+          ghiChu:    document.getElementById('nt-view-ghiChu').value,
+          nhaThau:   nhaThau
+        };
+
+        if (fileUrl) data.file = fileUrl;
+
+        await API.update('nghiemthu', _currentEditId, data);
+        bootstrap.Modal.getInstance(document.getElementById('modalViewNghiemThu')).hide();
+        await loadAllData();
+
+      } catch (err) {
+        alert('Lỗi khi lưu Nghiệm thu: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-save me-1"></i>Lưu &amp; Đóng';
+      }
+    }
+
+    // ─── XÓA BẢN GHI ─────────────────────────────────────────────────────────
+    function deleteRecord(type, id) {
+      const labelMap = { goithau: 'Gói thầu', hopdong: 'Hợp đồng', phuluc: 'Phụ lục HĐ', nghiemthu: 'Nghiệm thu' };
+      document.getElementById('delete-record-label').textContent = `${labelMap[type] || type} — ${id}`;
+
+      const modalEl = document.getElementById('modalConfirmDelete');
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+
+      // Gắn handler xóa (xóa handler cũ trước để tránh nhân đôi)
+      const btn = document.getElementById('btnConfirmDelete');
+      btn.replaceWith(btn.cloneNode(true));
+      document.getElementById('btnConfirmDelete').addEventListener('click', async () => {
+        const confirmBtn = document.getElementById('btnConfirmDelete');
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang xóa...';
+        try {
+          await API.delete(type, id);
+          bootstrap.Modal.getInstance(document.getElementById('modalConfirmDelete')).hide();
+          await loadAllData(); // Reload bảng
+        } catch (err) {
+          alert('Lỗi khi xóa: ' + err.message);
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = '<i class="bi bi-trash3 me-1"></i>Xóa';
+        }
+      }, { once: true });
+    }
+
+    // ─── CHỨC NĂNG NHẬP / XUẤT EXCEL ──────────────────────────────────────────
+    const CLIENT_SCHEMA_MAP = {
+      "goithau": {
+        "Mã GT": "maGT", "Mã DA": "maDA", "Tên gói thầu": "tenGT", "Loại GT": "loaiGT",
+        "Hình thức LCNT": "hinhThucLCNT", "Giá gói thầu": "giaGT", "Trạng thái GT": "trangThai",
+        "File GT": "file", "Ghi chú GT": "ghiChu"
+      },
+      "hopdong": {
+        "Mã HĐ": "maHD", "Mã GT": "maGT", "Mã DA": "maDA", "Tên HĐ": "tenHD", "Loại HĐ": "loaiHD",
+        "Nhà thầu": "nhaThau", "Ngày ký": "ngayKy", "Giá HĐ/Trúng thầu": "giaHD", "Giá quyết toán": "giaQuyetToan",
+        "Lũy kế thanh toán": "luyKeThanhToan", "% LK Thanh toán": "lkPercent",
+        "Ngày hiệu lực": "ngayHieuLuc", "Ngày hết hạn": "ngayHetHan",
+        "Thời gian HĐ (ngày)": "thoiGian", "File HĐ": "file",
+        "Trạng thái HĐ": "trangThai", "Ghi chú HĐ": "ghiChu"
+      },
+      "phuluc": {
+        "Mã PLHĐ": "maPLHD", "Mã HĐ": "maHD", "Mã DA": "maDA", "Nội dung PLHĐ": "noiDung",
+        "Ngày ký PLHĐ": "ngayKy", "Giá trị PLHĐ (nếu có)": "giaTriPL", "Gia hạn thời gian HĐ (nếu có)": "giaHan",
+        "File PLHĐ": "file", "Ghi chú": "ghiChu"
+      },
+      "nghiemthu": {
+        "Mã HSNT": "maHSNT", "Mã HĐ": "maHD", "Mã DA": "maDA", "Lần NT": "lanNT", "Ngày NT": "ngayNT",
+        "Giá trị NT": "giaTriNT", "Trạng thái HSNT": "trangThai", "File NT": "file", "Ghi chú NT": "ghiChu"
+      }
+    };
+
+    const TAB_CONFIG = {
+      '#tab-packages': {
+        alias: 'goithau',
+        sheetName: 'Gói thầu',
+        fileName: 'CPM_Goithau.xlsx',
+        getData: () => _allPackages || [],
+        primaryKey: 'maGT'
+      },
+      '#tab-contracts': {
+        alias: 'hopdong',
+        sheetName: 'Hợp đồng',
+        fileName: 'CPM_Hopdong.xlsx',
+        getData: () => _allContracts || [],
+        primaryKey: 'maHD'
+      },
+      '#tab-appendix': {
+        alias: 'phuluc',
+        sheetName: 'Phụ lục HĐ',
+        fileName: 'CPM_PhulucHD.xlsx',
+        getData: () => _allAppendix || [],
+        primaryKey: 'maPLHD'
+      },
+      '#tab-acceptance': {
+        alias: 'nghiemthu',
+        sheetName: 'Nghiệm thu',
+        fileName: 'CPM_Nghiemthu.xlsx',
+        getData: () => _allAcceptances || [],
+        primaryKey: 'maHSNT'
+      }
+    };
+
+    function exportToExcel() {
+      const activeTabBtn = document.querySelector('#contractTabs .nav-link.active');
+      if (!activeTabBtn) {
+        alert('Không xác định được tab hiện tại.');
+        return;
+      }
+      const target = activeTabBtn.getAttribute('data-bs-target');
+      const config = TAB_CONFIG[target];
+      if (!config) {
+        alert('Tab hiện tại không hỗ trợ xuất Excel.');
+        return;
+      }
+
+      const rawData = config.getData();
+      if (!rawData || rawData.length === 0) {
+        alert('Không có dữ liệu để xuất Excel.');
+        return;
+      }
+
+      const schema = CLIENT_SCHEMA_MAP[config.alias];
+      const reverseMap = {};
+      for (const h in schema) {
+        reverseMap[schema[h]] = h;
+      }
+
+      const exportData = rawData.map(item => {
+        const row = {};
+        for (const h in schema) {
+          const key = schema[h];
+          let val = item[key];
+          if (val === undefined || val === null) val = "";
+          if (key.toLowerCase().includes('ngay') && val) {
+            const dateVal = new Date(val);
+            if (!isNaN(dateVal.getTime())) {
+              const day = String(dateVal.getDate()).padStart(2, '0');
+              const month = String(dateVal.getMonth() + 1).padStart(2, '0');
+              val = `${day}/${month}/${dateVal.getFullYear()}`;
+            }
+          }
+          row[h] = val;
+        }
+        return row;
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, config.sheetName);
+      XLSX.writeFile(workbook, config.fileName);
+    }
+
+    let _parsedImportData = [];
+    let _activeImportConfig = null;
+
+    function openImportModal() {
+      const activeTabBtn = document.querySelector('#contractTabs .nav-link.active');
+      if (!activeTabBtn) {
+        alert('Không xác định được tab hiện tại.');
+        return;
+      }
+      const target = activeTabBtn.getAttribute('data-bs-target');
+      const config = TAB_CONFIG[target];
+      if (!config) {
+        alert('Tab hiện tại không hỗ trợ nhập Excel.');
+        return;
+      }
+
+      _activeImportConfig = config;
+      _parsedImportData = [];
+
+      document.getElementById('import-target-title').textContent = `Nhập dữ liệu cho danh sách [${config.sheetName}]`;
+      document.getElementById('excel-file-input').value = '';
+      document.getElementById('selected-file-name').textContent = 'Chưa chọn file nào';
+      document.getElementById('import-preview-section').classList.add('d-none');
+      document.getElementById('btnConfirmImport').disabled = true;
+
+      const modal = new bootstrap.Modal(document.getElementById('modalImportExcel'));
+      modal.show();
+    }
+
+    function initExcelDragDrop() {
+      const dropZone = document.getElementById('drop-zone');
+      const fileInput = document.getElementById('excel-file-input');
+
+      if (!dropZone) return;
+
+      dropZone.addEventListener('click', () => fileInput.click());
+
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('border-success', 'bg-success-subtle');
+      });
+
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('border-success', 'bg-success-subtle');
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-success', 'bg-success-subtle');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          fileInput.files = e.dataTransfer.files;
+          handleExcelFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          handleExcelFile(e.target.files[0]);
+        }
+      });
+    }
+
+    function parseExcelDate(val) {
+      if (!val) return "";
+      if (typeof val === 'number') {
+        const date = new Date((val - 25569) * 86400 * 1000);
+        return date.toISOString().split('T')[0];
+      }
+      const parts = val.toString().trim().split('/');
+      if (parts.length === 3) {
+        const day = parts[0].padStart(2, '0');
+        const month = parts[1].padStart(2, '0');
+        const year = parts[2];
+        return `${year}-${month}-${day}`;
+      }
+      return val;
+    }
+
+    function handleExcelFile(file) {
+      document.getElementById('selected-file-name').textContent = file.name;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+          if (rawRows.length < 2) {
+            alert('File Excel không có dữ liệu hoặc thiếu dòng tiêu đề.');
+            return;
+          }
+
+          const headers = rawRows[0].map(h => h ? h.toString().trim() : '');
+          const dataRows = rawRows.slice(1);
+          const schema = CLIENT_SCHEMA_MAP[_activeImportConfig.alias];
+
+          _parsedImportData = dataRows.filter(row => {
+            return row.some(cell => cell !== undefined && cell !== null && cell !== "");
+          }).map(row => {
+            const obj = {};
+            headers.forEach((h, idx) => {
+              const key = schema[h];
+              if (key) {
+                let cellVal = row[idx];
+                if (cellVal === undefined || cellVal === null) cellVal = "";
+                
+                if (key.toLowerCase().includes('ngay')) {
+                  cellVal = parseExcelDate(cellVal);
+                }
+                
+                if (['giaGT', 'giaHD', 'giaQuyetToan', 'giaTriPL', 'giaTriNT', 'luyKeThanhToan', 'thoiGian', 'giaHan', 'lanNT'].includes(key)) {
+                  if (typeof cellVal === 'string') {
+                    cellVal = Number(cellVal.replace(/[^0-9.-]/g, '')) || 0;
+                  }
+                }
+                
+                obj[key] = cellVal;
+              }
+            });
+            return obj;
+          });
+
+          if (_parsedImportData.length === 0) {
+            alert('Không tìm thấy dữ liệu hợp lệ trong file Excel.');
+            return;
+          }
+
+          renderImportPreview(headers, dataRows.slice(0, 10));
+          document.getElementById('import-preview-summary').textContent = `Phát hiện ${_parsedImportData.length} dòng dữ liệu sẵn sàng để nhập.`;
+          document.getElementById('import-preview-section').classList.remove('d-none');
+          document.getElementById('btnConfirmImport').disabled = false;
+
+        } catch (err) {
+          alert('Lỗi phân tích file Excel: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderImportPreview(headers, rows) {
+      const headerEl = document.getElementById('import-preview-header');
+      const bodyEl = document.getElementById('import-preview-body');
+
+      headerEl.innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+      bodyEl.innerHTML = rows.map(row => {
+        return `<tr>${headers.map((h, idx) => {
+          let val = row[idx];
+          if (val === undefined || val === null) val = "";
+          return `<td>${val}</td>`;
+        }).join('')}</tr>`;
+      }).join('');
+    }
+
+    async function executeImport() {
+      const btn = document.getElementById('btnConfirmImport');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang nhập dữ liệu...';
+
+      try {
+        if (!_activeImportConfig || _parsedImportData.length === 0) {
+          throw new Error('Dữ liệu không sẵn sàng.');
+        }
+
+        await apiPost({
+          action: 'import',
+          sheet: _activeImportConfig.alias,
+          dataList: _parsedImportData
+        });
+
+        bootstrap.Modal.getInstance(document.getElementById('modalImportExcel')).hide();
+        alert(`Nhập thành công ${_parsedImportData.length} dòng dữ liệu vào [${_activeImportConfig.sheetName}]!`);
+        await loadAllData();
+
+      } catch (err) {
+        alert('Lỗi nhập dữ liệu: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Xác nhận Nhập';
+      }
+    }
+  </script>
+</body>
+
+</html>

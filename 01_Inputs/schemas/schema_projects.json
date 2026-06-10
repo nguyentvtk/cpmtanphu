@@ -1,0 +1,19 @@
+{
+  "sheet": "projects",
+  "description": "Quản lý danh sách dự án xây dựng",
+  "columns": [
+    { "name": "maDA",          "type": "string",  "required": true,  "label": "Mã dự án",        "example": "PRJ-001" },
+    { "name": "tenDA",         "type": "string",  "required": true,  "label": "Tên dự án",        "example": "Dự án A" },
+    { "name": "loaiDA",        "type": "enum",    "required": true,  "label": "Loại dự án",       "values": ["Dân dụng", "Công nghiệp", "Hạ tầng", "Khác"] },
+    { "name": "trangThai",     "type": "enum",    "required": true,  "label": "Trạng thái",       "values": ["Chuẩn bị", "Đang thi công", "Hoàn thành", "Tạm dừng"] },
+    { "name": "chuDauTu",      "type": "string",  "required": true,  "label": "Chủ đầu tư",      "example": "Công ty XYZ" },
+    { "name": "diaDiem",       "type": "string",  "required": false, "label": "Địa điểm",         "example": "TP.HCM" },
+    { "name": "ngayBatDau",    "type": "date",    "required": true,  "label": "Ngày bắt đầu",    "format": "DD/MM/YYYY" },
+    { "name": "ngayKetThuc",   "type": "date",    "required": true,  "label": "Ngày kết thúc",   "format": "DD/MM/YYYY" },
+    { "name": "giaTriHopDong", "type": "number",  "required": false, "label": "Giá trị HĐ (VNĐ)","example": 5000000000 },
+    { "name": "tiDo",          "type": "number",  "required": false, "label": "Tiến độ (%)",      "min": 0, "max": 100 },
+    { "name": "ghiChu",        "type": "string",  "required": false, "label": "Ghi chú",          "example": "" },
+    { "name": "ngayTao",       "type": "datetime","required": true,  "label": "Ngày tạo",         "auto": true },
+    { "name": "nguoiTao",      "type": "string",  "required": true,  "label": "Người tạo",        "auto": true }
+  ]
+}

@@ -1,0 +1,24 @@
+/* ============================================================
+   CPM 5.0 — Theme: Color Tokens & Bootstrap Overrides
+   Layer: 03_Outputs/assets/css
+   ============================================================ */
+:root {
+  --cpm-primary:    #1a56db;   /* Xanh dương chính */
+  --cpm-accent:     #e3a008;   /* Vàng nhấn */
+  --cpm-success:    #057a55;
+  --cpm-danger:     #c81e1e;
+  --cpm-sidebar-bg: #1e2a3b;
+
+  --bs-primary:     var(--cpm-primary);
+  --bs-font-sans-serif: 'Inter', system-ui, sans-serif;
+}
+
+/* Navbar brand icon color */
+.navbar-brand .text-warning { color: var(--cpm-accent) !important; }
+
+/* Primary button tweak */
+.btn-primary { background-color: var(--cpm-primary); border-color: var(--cpm-primary); }
+.btn-primary:hover { background-color: #1648c0; border-color: #1648c0; }
+
+/* Active nav link */
+.nav-link.active { background-color: rgba(255,255,255,0.12); border-radius: 0.375rem; }

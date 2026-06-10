@@ -1,0 +1,18 @@
+{
+  "sheet": "tasks",
+  "description": "Quản lý công việc theo từng dự án",
+  "columns": [
+    { "name": "maCV",        "type": "string", "required": true,  "label": "Mã công việc",     "example": "TSK-001" },
+    { "name": "tenCV",       "type": "string", "required": true,  "label": "Tên công việc",    "example": "Đổ móng tầng 1" },
+    { "name": "maDA",        "type": "string", "required": true,  "label": "Mã dự án",         "ref": "projects.maDA" },
+    { "name": "hạngMuc",     "type": "string", "required": false, "label": "Hạng mục",         "example": "Kết cấu" },
+    { "name": "nguoiPhuTrach","type": "string", "required": true, "label": "Người phụ trách",  "ref": "users.maNV" },
+    { "name": "trangThai",   "type": "enum",   "required": true,  "label": "Trạng thái",       "values": ["Chưa bắt đầu", "Đang thực hiện", "Hoàn thành", "Trễ hạn"] },
+    { "name": "uuTien",      "type": "enum",   "required": false, "label": "Ưu tiên",          "values": ["Thấp", "Trung bình", "Cao", "Khẩn cấp"] },
+    { "name": "tiDo",        "type": "number", "required": false, "label": "Tiến độ (%)",      "min": 0, "max": 100 },
+    { "name": "ngayBatDau",  "type": "date",   "required": true,  "label": "Ngày bắt đầu",    "format": "DD/MM/YYYY" },
+    { "name": "hanChot",     "type": "date",   "required": true,  "label": "Hạn chót",         "format": "DD/MM/YYYY" },
+    { "name": "ghiChu",      "type": "string", "required": false, "label": "Ghi chú",          "example": "" },
+    { "name": "ngayTao",     "type": "datetime","required": true, "label": "Ngày tạo",         "auto": true }
+  ]
+}

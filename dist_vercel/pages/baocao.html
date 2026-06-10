@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Báo cáo ngày — CPM 5.0</title>
+
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Shared API Helper -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal
+                ? (isIndexPage ? "pages/login.html" : "login.html")
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang: TVGS dùng cổng riêng
+    const userProfile = Auth.checkAuth(false);
+    if (userProfile && userProfile.role === 'TVGS') {
+      Auth.navigateTo(SCRIPT_URL + "?page=tvgs");
+    }
+
+    // Quản lý trở lên: xem tất cả báo cáo. Nhân viên: chỉ xem báo cáo của mình
+    const isManagerPlus = userProfile && (
+      /admin|giám đốc|quản lý|trưởng phòng|giamdoc/i.test(String(userProfile.role || '')) ||
+      /admin|giám đốc|quản lý|trưởng phòng/i.test(String(userProfile.chucVu || ''))
+    );
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' ||
+                      window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+      const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                          (!window.location.pathname.includes('/pages/'));
+
+      // 1. Tự động điều chỉnh link sidebar
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top';
+        }
+      });
+
+      // 2. Điền thông tin profile động vào sidebar
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+
+      // 3. Đăng ký sự kiện nút Đăng xuất
+      const btnLogout = document.getElementById('btnLogout');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+          e.preventDefault();
+          Auth.logout();
+        });
+      }
+    });
+  </script>
+  <style>
+  /* Tự động ẩn sidebar và header khi trang ở trong iframe */
+  @media screen {
+    html.in-iframe #sidebar,
+    html.in-iframe .top-navbar,
+    body.in-iframe #sidebar,
+    body.in-iframe .top-navbar {
+      display: none !important;
+    }
+    html.in-iframe #content,
+    body.in-iframe #content {
+      margin-left: 0 !important;
+      width: 100% !important;
+      padding: 15px !important;
+      min-height: 100vh !important;
+    }
+    html.in-iframe body,
+    body.in-iframe {
+      background-color: #f8fafc !important;
+    }
+  }
+</style>
+<script>
+// Tự động phát hiện và thêm class in-iframe
+(function() {
+  const isLocal = window.location.protocol === 'file:' || 
+                  window.location.hostname === 'localhost' || 
+                  window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+  let depth = 0;
+  let current = window;
+  while (current !== window.top && current.parent !== current) {
+    depth++;
+    current = current.parent;
+    if (depth > 10) break;
+  }
+  const isInIframe = isLocal ? (depth >= 1) : (depth >= 3);
+
+  if (isInIframe) {
+    document.documentElement.classList.add('in-iframe');
+    const addClass = () => { if (document.body) document.body.classList.add('in-iframe'); };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', addClass);
+    } else {
+      addClass();
+    }
+  }
+})();
+
+// Sử dụng URL Web App được định nghĩa toàn cục từ trang chính
+// Gán thẳng vào window (không khai báo) => miễn nhiễm lỗi "already declared"
+// kể cả khi GAS nạp script này nhiều lần hoặc tồn tại file cũ khai báo trùng
+window.API_URL = window.SCRIPT_URL;
+window.CACHE_DURATION = 60000; // 60 giây
+
+async function apiPost(body) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    body: JSON.stringify(body)
+  });
+  const json = await res.json();
+  if (json.status === 'error') throw new Error(json.message);
+  return json.data;
+}
+
+function getCache(key) {
+  try {
+    const cached = sessionStorage.getItem('cpm_cache_' + key);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    const age = Date.now() - parsed.timestamp;
+    if (age < CACHE_DURATION) {
+      return parsed.data;
+    }
+  } catch(e) {}
+  return null;
+}
+
+function setCache(key, data) {
+  try {
+    const obj = {
+      timestamp: Date.now(),
+      data: data
+    };
+    sessionStorage.setItem('cpm_cache_' + key, JSON.stringify(obj));
+  } catch(e) {}
+}
+
+function clearCache(key) {
+  try {
+    sessionStorage.removeItem('cpm_cache_' + key);
+  } catch(e) {}
+}
+
+window.API = {
+  list: async (sheet, useCache = true) => {
+    if (useCache) {
+      const cached = getCache(sheet);
+      if (cached) return cached;
+    }
+    const data = await apiPost({ action: 'list', sheet });
+    if (useCache) {
+      setCache(sheet, data);
+    }
+    return data;
+  },
+  
+  batchList: async (sheets, useCache = true) => {
+    const result = {};
+    const missingSheets = [];
+    
+    if (useCache) {
+      sheets.forEach(sheet => {
+        const cached = getCache(sheet);
+        if (cached) {
+          result[sheet] = cached;
+        } else {
+          missingSheets.push(sheet);
+        }
+      });
+    } else {
+      missingSheets.push(...sheets);
+    }
+    
+    if (missingSheets.length > 0) {
+      try {
+        const batchData = await apiPost({ action: 'batch_list', sheets: missingSheets });
+        Object.keys(batchData).forEach(sheet => {
+          result[sheet] = batchData[sheet];
+          if (useCache) {
+            setCache(sheet, batchData[sheet]);
+          }
+        });
+      } catch(err) {
+        console.error("Lỗi batchList, thực hiện fallback gọi tuần tự:", err);
+        // Fallback: gọi từng sheet riêng lẻ nếu batch bị lỗi
+        for (const sheet of missingSheets) {
+          result[sheet] = await API.list(sheet, useCache);
+        }
+      }
+    }
+    
+    return result;
+  },
+
+  get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+  
+  create: async (sheet, data) => {
+    const res = await apiPost({ action: 'create', sheet, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  update: async (sheet, id, data) => {
+    const res = await apiPost({ action: 'update', sheet, id, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  delete: async (sheet, id) => {
+    const res = await apiPost({ action: 'delete', sheet, id });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  login:  (email, password)  => apiPost({ action: 'login',  email, password }),
+
+  loginTVGS: (identifier, password) => apiPost({ action: 'login_tvgs', identifier, password }),
+
+  tvgsSync: () => apiPost({ action: 'tvgs_sync' }),
+
+  tvgsCheckNow: () => apiPost({ action: 'tvgs_check_now' }),
+
+  tvgsChangePassword: (maSoDN, oldPassword, newPassword) => apiPost({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+
+  qtInit: (maDA) => apiPost({ action: 'qt_init', maDA }),
+
+  qtLoad: (maQT) => apiPost({ action: 'qt_load', maQT }),
+
+  qtDelete: (maQT) => apiPost({ action: 'qt_delete', maQT }),
+
+  clearAllCache: () => {
+    try {
+      const keys = Object.keys(sessionStorage);
+      keys.forEach(key => {
+        if (key.indexOf('cpm_cache_') === 0) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    } catch(e) {}
+  }
+};
+
+// ─── SESSION TOKEN RECOVERY ─────────────────────────────────────────────────
+// GAS đổi iframe origin mỗi lần chuyển trang → localStorage bị xóa.
+// Giải pháp: Code.gs truyền authToken qua template, trang đích đọc và khôi phục.
+if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+  try {
+    localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN)));
+  } catch(e) {}
+}
+
+// ─── AUTH & NAVIGATION ──────────────────────────────────────────────────────
+window.Auth = {
+  navigateTo: (url) => {
+    // Không tự điều hướng khi đang ở màn hình cấp quyền OAuth của Google
+    // (sandbox chặn navigation không có thao tác người dùng -> lỗi console)
+    if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+
+    const isLocal = window.location.protocol === 'file:' ||
+                    window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+                    
+    // Trên GAS: đính kèm token session vào URL để server truyền xuống trang đích
+    if (!isLocal) {
+      const profileStr = localStorage.getItem('userProfile');
+      if (profileStr && !url.includes('token=')) {
+        const token = btoa(encodeURIComponent(profileStr));
+        url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+      }
+    }
+
+    if (isLocal) {
+      window.location.href = url;
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_top';
+      if (document.body) {
+        document.body.appendChild(link);
+      } else {
+        document.documentElement.appendChild(link);
+      }
+      link.click();
+    }
+  },
+  checkAuth: (isLoginPage = false) => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+
+    const profileStr = localStorage.getItem('userProfile');
+    let profile = null;
+    try {
+      if (profileStr) profile = JSON.parse(profileStr);
+    } catch(e) {
+      localStorage.removeItem('userProfile');
+    }
+
+    if (isLoginPage) {
+      if (profile) {
+        Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+      }
+    } else {
+      if (!profile) {
+        const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                            (!window.location.pathname.includes('/pages/'));
+        Auth.navigateTo(isLocal 
+          ? (isIndexPage ? "pages/login.html" : "login.html") 
+          : SCRIPT_URL + "?page=login");
+        return null;
+      }
+      return profile;
+    }
+  },
+  logout: () => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+    localStorage.removeItem('userProfile');
+    if (isLocal) {
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+      Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+    } else {
+      Auth.navigateTo(SCRIPT_URL + "?page=login");
+    }
+  }
+};
+</script>
+
+
+  <!-- Fallback local testing -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        login:  (email, password)  => apiPost({ action: 'login',  email, password })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+    }
+    body { font-family: 'Inter', sans-serif; background-color: var(--bg-light); overflow-x: hidden; }
+    #sidebar {
+      width: var(--sidebar-width); height: 100vh; position: fixed; left: 0; top: 0;
+      background: var(--sidebar-bg); color: var(--sidebar-color); transition: all 0.3s;
+      z-index: 1000; display: flex; flex-direction: column; border-right: 1px solid var(--border-color);
+    }
+    #sidebar .sidebar-header {
+      padding: 20px 24px; background: var(--sidebar-bg); color: #0f172a;
+      font-weight: 700; font-size: 1.25rem; border-bottom: 1px solid var(--border-color);
+    }
+    #sidebar .nav-link {
+      color: var(--sidebar-color); padding: 12px 20px; display: flex; align-items: center;
+      gap: 12px; text-decoration: none; transition: all 0.2s ease-in-out; font-weight: 500;
+    }
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      color: var(--sidebar-active-color) !important;
+      background: var(--sidebar-active-bg) !important;
+      border-left: 4px solid var(--primary-color);
+    }
+    #sidebar .nav-link i { font-size: 1.1rem; }
+    #content {
+      margin-left: var(--sidebar-width); width: calc(100% - var(--sidebar-width));
+      min-height: 100vh; transition: all 0.3s; padding: 20px;
+    }
+    @media (max-width: 991.98px) {
+      #sidebar { margin-left: calc(-1 * var(--sidebar-width)); }
+      #sidebar.active { margin-left: 0; }
+      #content { margin-left: 0; width: 100%; }
+      #content.active { margin-left: var(--sidebar-width); }
+    }
+    .top-navbar {
+      background: white; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+      margin: -20px -20px 20px -20px; padding: 14px 20px; border-bottom: 1px solid var(--border-color);
+    }
+    .btn-primary {
+      background: var(--primary-gradient) !important; border: none !important;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important; transition: all 0.2s ease !important;
+    }
+    .card {
+      border: 1px solid var(--border-color) !important; border-radius: 16px !important;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02) !important;
+      overflow: hidden;
+    }
+    .table th {
+      background-color: #f8fafc !important; color: #475569 !important;
+      font-weight: 600 !important; font-size: 0.8rem !important; letter-spacing: 0.05em;
+    }
+    .table td { font-size: 0.88rem; vertical-align: middle; }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span>CPM 5.0</span>
+      <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link ">
+        <i class="bi bi-speedometer2"></i>
+        <span>Tổng quan</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link ">
+        <i class="bi bi-briefcase"></i>
+        <span>Dự án</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link ">
+        <i class="bi bi-list-task"></i>
+        <span>Nhiệm vụ</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link ">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>Hợp đồng</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link ">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Sơ đồ Gantt</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link ">
+        <i class="bi bi-people"></i>
+        <span>Nhân viên</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link ">
+        <i class="bi bi-building"></i>
+        <span>Nhà thầu</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link ">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Tư vấn giám sát</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link active">
+        <i class="bi bi-journal-richtext"></i>
+        <span>Báo cáo ngày</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link ">
+        <i class="bi bi-calculator"></i>
+        <span>Quyết toán DAHT</span>
+      </a>
+    </div>
+
+    <!-- Hỗ trợ kỹ thuật -->
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Zalo hỗ trợ">
+            <i class="bi bi-chat-dots-fill fs-6"></i>
+          </a>
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Gửi Email">
+            <i class="bi bi-envelope-fill fs-6"></i>
+          </a>
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s; background-color: #ff0000 !important;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Kênh Youtube">
+            <i class="bi bi-youtube fs-6"></i>
+          </a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+
+    <!-- Profile (Footer) -->
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">
+            A
+          </div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- Top Navbar -->
+    <div class="top-navbar d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div class="d-flex align-items-center gap-3">
+        <button type="button" id="sidebarCollapse" class="btn btn-light d-lg-none">
+          <i class="bi bi-list fs-4"></i>
+        </button>
+        <h4 class="mb-0 fw-bold">Báo cáo thi công ngày</h4>
+      </div>
+    </div>
+
+    <!-- Form nộp báo cáo -->
+    <div class="card border-0 shadow-sm p-4 mb-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-send me-2 text-success"></i>Nộp báo cáo mới</h6>
+      <form id="reportForm" class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label small fw-bold">Dự án <span class="text-danger">*</span></label>
+          <select class="form-select" id="rp-maDA" required></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-bold">Ngày báo cáo <span class="text-danger">*</span></label>
+          <input type="date" class="form-control" id="rp-ngay" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-bold">Tiến độ (%)</label>
+          <input type="number" class="form-control" id="rp-tienDo" min="0" max="100" placeholder="0-100">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-bold">Giải ngân (tr.đ)</label>
+          <input type="number" class="form-control" id="rp-giaiNgan" min="0" step="0.1" placeholder="0">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Hạng mục thi công <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="rp-hangMuc" placeholder="VD: Đắp sỏi đỏ nền đường, lu lèn K98..." required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-bold">Số công nhân</label>
+          <input type="number" class="form-control" id="rp-congNhan" min="0" placeholder="0">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-bold">Thời tiết</label>
+          <select class="form-select" id="rp-thoiTiet">
+            <option value="Nắng">Nắng</option>
+            <option value="Nắng nóng">Nắng nóng</option>
+            <option value="Âm u">Âm u</option>
+            <option value="Mưa nhỏ">Mưa nhỏ</option>
+            <option value="Mưa lớn">Mưa lớn</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-bold">Kiểm định chất lượng</label>
+          <select class="form-select" id="rp-chatLuong">
+            <option value="">—</option>
+            <option value="Đạt">Đạt</option>
+            <option value="Đạt có điều kiện">Đạt có điều kiện</option>
+            <option value="Không đạt">Không đạt</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Khó khăn vướng mắc</label>
+          <textarea class="form-control" id="rp-vuongMac" rows="2" placeholder="Không có / mô tả khó khăn..."></textarea>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-bold">Hình ảnh hiện trường (link)</label>
+          <textarea class="form-control" id="rp-hinhAnh" rows="2" placeholder="https://..."></textarea>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-bold">Ghi chú</label>
+          <textarea class="form-control" id="rp-ghiChu" rows="2"></textarea>
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn btn-primary fw-bold px-4" id="btnSubmitReport">
+            <i class="bi bi-send"></i> Gửi báo cáo
+          </button>
+          <span id="reportMsg" class="ms-3 small"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Danh sách báo cáo -->
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-journal-text me-2 text-primary"></i><span id="listTitle">Báo cáo đã nộp</span> <span class="badge bg-light text-secondary border ms-1" id="reportCount">0 báo cáo</span></h6>
+        <div class="d-flex gap-2">
+          <input type="text" id="reportSearch" class="form-control form-control-sm" placeholder="Tìm theo dự án, hạng mục, mã BC..." style="min-width: 260px;">
+          <button class="btn btn-outline-secondary btn-sm" id="btnReload"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-4">Mã BC</th>
+                <th>Ngày</th>
+                <th>Dự án</th>
+                <th>Nhân viên</th>
+                <th>Hạng mục</th>
+                <th class="text-center">Tiến độ</th>
+                <th class="text-end">Giải ngân (tr.đ)</th>
+                <th>Chất lượng</th>
+                <th>Vướng mắc</th>
+              </tr>
+            </thead>
+            <tbody id="reportTableBody">
+              <tr><td colspan="9" class="text-center py-5 text-muted">
+                <div class="spinner-border text-primary spinner-border-sm me-2"></div>Đang tải...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // ─── SIDEBAR TOGGLE (mobile) ───
+    document.getElementById('sidebarCollapse')?.addEventListener('click', () => {
+      document.getElementById('sidebar').classList.toggle('active');
+    });
+    document.getElementById('sidebarCollapseMobile')?.addEventListener('click', () => {
+      document.getElementById('sidebar').classList.remove('active');
+    });
+
+    let projects = [];
+    let staffList = [];
+    let reports = [];
+    let myMaNV = userProfile ? (userProfile.maNV || '') : '';
+
+    // Ngày mặc định: hôm nay
+    document.getElementById('rp-ngay').valueAsDate = new Date();
+
+    function toDMY(iso) {
+      if (!iso) return '';
+      const p = String(iso).split('-');
+      return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
+    }
+
+    function staffName(maNV) {
+      const s = staffList.find(x => String(x.maNV).trim() === String(maNV).trim());
+      return s ? s.hoTen : (maNV || '');
+    }
+
+    // ─── TẢI DỮ LIỆU ───
+    async function init() {
+      try {
+        const data = API.batchList ? await API.batchList(['duan', 'nhansu']) : null;
+        if (data) {
+          projects = data['duan'] || [];
+          staffList = data['nhansu'] || [];
+        } else {
+          projects = await API.list('duan');
+          staffList = await API.list('nhansu');
+        }
+      } catch (e) {
+        try {
+          projects = await API.list('duan');
+          staffList = await API.list('nhansu');
+        } catch (e2) { projects = []; staffList = []; }
+      }
+      const sel = document.getElementById('rp-maDA');
+      sel.innerHTML = projects.length
+        ? projects.map(p => `<option value="${p.maDA}" data-ten="${(p.tenDA || '').replace(/"/g, '&quot;')}">${p.maDA} — ${p.tenDA}</option>`).join('')
+        : '<option value="">(Chưa có dự án)</option>';
+      loadReports();
+    }
+
+    async function loadReports() {
+      const tbody = document.getElementById('reportTableBody');
+      try {
+        reports = await API.list('baocao', false) || [];
+        // Nhân viên chỉ thấy báo cáo của mình; Quản lý trở lên thấy tất cả
+        if (!isManagerPlus && myMaNV) {
+          reports = reports.filter(r => String(r.maNV || '').trim() === String(myMaNV).trim());
+          document.getElementById('listTitle').textContent = 'Báo cáo của tôi';
+        }
+        reports.sort((a, b) => String(b.id || '').localeCompare(String(a.id || '')));
+        renderReports();
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-4">Lỗi: ' + err.message + '</td></tr>';
+      }
+    }
+
+    function renderReports() {
+      const tbody = document.getElementById('reportTableBody');
+      const kw = (document.getElementById('reportSearch').value || '').toLowerCase();
+      const filtered = reports.filter(r =>
+        !kw || [r.id, r.maDA, r.tenDA, r.workItem, r.issues].some(v => String(v || '').toLowerCase().includes(kw))
+      );
+      document.getElementById('reportCount').textContent = filtered.length + ' báo cáo';
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Chưa có báo cáo nào</td></tr>';
+        return;
+      }
+      tbody.innerHTML = filtered.map(r => {
+        const clBadge = /không/i.test(r.qualityInspection || '') ? 'bg-danger'
+                      : /điều kiện/i.test(r.qualityInspection || '') ? 'bg-warning text-dark'
+                      : (r.qualityInspection ? 'bg-success' : 'bg-light text-muted border');
+        return `<tr>
+          <td class="ps-4 fw-bold">${r.id || ''}</td>
+          <td>${r.date || ''}</td>
+          <td>${r.tenDA || r.maDA || ''}</td>
+          <td>${staffName(r.maNV)}</td>
+          <td>${r.workItem || ''}</td>
+          <td class="text-center">${r.progressPercent !== '' && r.progressPercent !== undefined ? r.progressPercent + '%' : '—'}</td>
+          <td class="text-end">${r.disbursementAmount || '—'}</td>
+          <td><span class="badge ${clBadge}">${r.qualityInspection || '—'}</span></td>
+          <td>${r.issues || '—'}</td>
+        </tr>`;
+      }).join('');
+    }
+    document.getElementById('reportSearch').addEventListener('input', renderReports);
+    document.getElementById('btnReload').addEventListener('click', loadReports);
+
+    // ─── NỘP BÁO CÁO ───
+    document.getElementById('reportForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitReport');
+      const msg = document.getElementById('reportMsg');
+      const sel = document.getElementById('rp-maDA');
+      const opt = sel.selectedOptions[0];
+      if (!opt || !opt.value) { msg.textContent = 'Vui lòng chọn dự án'; msg.className = 'ms-3 small text-danger'; return; }
+
+      btn.disabled = true;
+      msg.textContent = 'Đang gửi...';
+      msg.className = 'ms-3 small text-muted';
+      try {
+        await API.create('baocao', {
+          date: toDMY(document.getElementById('rp-ngay').value),
+          maDA: opt.value,
+          tenDA: opt.dataset.ten || '',
+          maNV: myMaNV,
+          workItem: document.getElementById('rp-hangMuc').value.trim(),
+          progressPercent: document.getElementById('rp-tienDo').value,
+          disbursementAmount: document.getElementById('rp-giaiNgan').value,
+          issues: document.getElementById('rp-vuongMac').value.trim(),
+          imageUri: document.getElementById('rp-hinhAnh').value.trim(),
+          weather: document.getElementById('rp-thoiTiet').value,
+          laborCount: document.getElementById('rp-congNhan').value,
+          qualityInspection: document.getElementById('rp-chatLuong').value,
+          notes: document.getElementById('rp-ghiChu').value.trim()
+        });
+        msg.textContent = '✅ Đã gửi báo cáo thành công!';
+        msg.className = 'ms-3 small text-success';
+        ['rp-hangMuc','rp-tienDo','rp-giaiNgan','rp-vuongMac','rp-hinhAnh','rp-ghiChu','rp-congNhan'].forEach(id => document.getElementById(id).value = '');
+        loadReports();
+      } catch (err) {
+        msg.textContent = '❌ ' + (err.message || 'Lỗi gửi báo cáo');
+        msg.className = 'ms-3 small text-danger';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ─── KHỞI TẠO ───
+    init();
+  </script>
+</body>
+</html>

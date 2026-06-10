@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quyết toán DAHT — CPM 5.0</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Shared API Helper -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal
+                ? (isIndexPage ? "pages/login.html" : "login.html")
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang: TVGS dùng cổng riêng
+    const userProfile = Auth.checkAuth(false);
+    if (userProfile && userProfile.role === 'TVGS') {
+      Auth.navigateTo(SCRIPT_URL + "?page=tvgs");
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' ||
+                      window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+      const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                          (!window.location.pathname.includes('/pages/'));
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top';
+        }
+      });
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+      const btnLogout = document.getElementById('btnLogout');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => { e.preventDefault(); Auth.logout(); });
+      }
+    });
+  </script>
+  <style>
+  /* Tự động ẩn sidebar và header khi trang ở trong iframe */
+  @media screen {
+    html.in-iframe #sidebar,
+    html.in-iframe .top-navbar,
+    body.in-iframe #sidebar,
+    body.in-iframe .top-navbar {
+      display: none !important;
+    }
+    html.in-iframe #content,
+    body.in-iframe #content {
+      margin-left: 0 !important;
+      width: 100% !important;
+      padding: 15px !important;
+      min-height: 100vh !important;
+    }
+    html.in-iframe body,
+    body.in-iframe {
+      background-color: #f8fafc !important;
+    }
+  }
+</style>
+<script>
+// Tự động phát hiện và thêm class in-iframe
+(function() {
+  const isLocal = window.location.protocol === 'file:' || 
+                  window.location.hostname === 'localhost' || 
+                  window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+  let depth = 0;
+  let current = window;
+  while (current !== window.top && current.parent !== current) {
+    depth++;
+    current = current.parent;
+    if (depth > 10) break;
+  }
+  const isInIframe = isLocal ? (depth >= 1) : (depth >= 3);
+
+  if (isInIframe) {
+    document.documentElement.classList.add('in-iframe');
+    const addClass = () => { if (document.body) document.body.classList.add('in-iframe'); };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', addClass);
+    } else {
+      addClass();
+    }
+  }
+})();
+
+// Sử dụng URL Web App được định nghĩa toàn cục từ trang chính
+// Gán thẳng vào window (không khai báo) => miễn nhiễm lỗi "already declared"
+// kể cả khi GAS nạp script này nhiều lần hoặc tồn tại file cũ khai báo trùng
+window.API_URL = window.SCRIPT_URL;
+window.CACHE_DURATION = 60000; // 60 giây
+
+async function apiPost(body) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    body: JSON.stringify(body)
+  });
+  const json = await res.json();
+  if (json.status === 'error') throw new Error(json.message);
+  return json.data;
+}
+
+function getCache(key) {
+  try {
+    const cached = sessionStorage.getItem('cpm_cache_' + key);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    const age = Date.now() - parsed.timestamp;
+    if (age < CACHE_DURATION) {
+      return parsed.data;
+    }
+  } catch(e) {}
+  return null;
+}
+
+function setCache(key, data) {
+  try {
+    const obj = {
+      timestamp: Date.now(),
+      data: data
+    };
+    sessionStorage.setItem('cpm_cache_' + key, JSON.stringify(obj));
+  } catch(e) {}
+}
+
+function clearCache(key) {
+  try {
+    sessionStorage.removeItem('cpm_cache_' + key);
+  } catch(e) {}
+}
+
+window.API = {
+  list: async (sheet, useCache = true) => {
+    if (useCache) {
+      const cached = getCache(sheet);
+      if (cached) return cached;
+    }
+    const data = await apiPost({ action: 'list', sheet });
+    if (useCache) {
+      setCache(sheet, data);
+    }
+    return data;
+  },
+  
+  batchList: async (sheets, useCache = true) => {
+    const result = {};
+    const missingSheets = [];
+    
+    if (useCache) {
+      sheets.forEach(sheet => {
+        const cached = getCache(sheet);
+        if (cached) {
+          result[sheet] = cached;
+        } else {
+          missingSheets.push(sheet);
+        }
+      });
+    } else {
+      missingSheets.push(...sheets);
+    }
+    
+    if (missingSheets.length > 0) {
+      try {
+        const batchData = await apiPost({ action: 'batch_list', sheets: missingSheets });
+        Object.keys(batchData).forEach(sheet => {
+          result[sheet] = batchData[sheet];
+          if (useCache) {
+            setCache(sheet, batchData[sheet]);
+          }
+        });
+      } catch(err) {
+        console.error("Lỗi batchList, thực hiện fallback gọi tuần tự:", err);
+        // Fallback: gọi từng sheet riêng lẻ nếu batch bị lỗi
+        for (const sheet of missingSheets) {
+          result[sheet] = await API.list(sheet, useCache);
+        }
+      }
+    }
+    
+    return result;
+  },
+
+  get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+  
+  create: async (sheet, data) => {
+    const res = await apiPost({ action: 'create', sheet, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  update: async (sheet, id, data) => {
+    const res = await apiPost({ action: 'update', sheet, id, data });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  delete: async (sheet, id) => {
+    const res = await apiPost({ action: 'delete', sheet, id });
+    clearCache(sheet);
+    if (sheet === 'hopdong' || sheet === 'phuluc' || sheet === 'nghiemthu') {
+      clearCache('duan');
+    }
+    return res;
+  },
+  
+  login:  (email, password)  => apiPost({ action: 'login',  email, password }),
+
+  loginTVGS: (identifier, password) => apiPost({ action: 'login_tvgs', identifier, password }),
+
+  tvgsSync: () => apiPost({ action: 'tvgs_sync' }),
+
+  tvgsCheckNow: () => apiPost({ action: 'tvgs_check_now' }),
+
+  tvgsChangePassword: (maSoDN, oldPassword, newPassword) => apiPost({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+
+  qtInit: (maDA) => apiPost({ action: 'qt_init', maDA }),
+
+  qtLoad: (maQT) => apiPost({ action: 'qt_load', maQT }),
+
+  qtDelete: (maQT) => apiPost({ action: 'qt_delete', maQT }),
+
+  clearAllCache: () => {
+    try {
+      const keys = Object.keys(sessionStorage);
+      keys.forEach(key => {
+        if (key.indexOf('cpm_cache_') === 0) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    } catch(e) {}
+  }
+};
+
+// ─── SESSION TOKEN RECOVERY ─────────────────────────────────────────────────
+// GAS đổi iframe origin mỗi lần chuyển trang → localStorage bị xóa.
+// Giải pháp: Code.gs truyền authToken qua template, trang đích đọc và khôi phục.
+if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+  try {
+    localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN)));
+  } catch(e) {}
+}
+
+// ─── AUTH & NAVIGATION ──────────────────────────────────────────────────────
+window.Auth = {
+  navigateTo: (url) => {
+    // Không tự điều hướng khi đang ở màn hình cấp quyền OAuth của Google
+    // (sandbox chặn navigation không có thao tác người dùng -> lỗi console)
+    if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+
+    const isLocal = window.location.protocol === 'file:' ||
+                    window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+                    
+    // Trên GAS: đính kèm token session vào URL để server truyền xuống trang đích
+    if (!isLocal) {
+      const profileStr = localStorage.getItem('userProfile');
+      if (profileStr && !url.includes('token=')) {
+        const token = btoa(encodeURIComponent(profileStr));
+        url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+      }
+    }
+
+    if (isLocal) {
+      window.location.href = url;
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_top';
+      if (document.body) {
+        document.body.appendChild(link);
+      } else {
+        document.documentElement.appendChild(link);
+      }
+      link.click();
+    }
+  },
+  checkAuth: (isLoginPage = false) => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+
+    const profileStr = localStorage.getItem('userProfile');
+    let profile = null;
+    try {
+      if (profileStr) profile = JSON.parse(profileStr);
+    } catch(e) {
+      localStorage.removeItem('userProfile');
+    }
+
+    if (isLoginPage) {
+      if (profile) {
+        Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+      }
+    } else {
+      if (!profile) {
+        const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                            (!window.location.pathname.includes('/pages/'));
+        Auth.navigateTo(isLocal 
+          ? (isIndexPage ? "pages/login.html" : "login.html") 
+          : SCRIPT_URL + "?page=login");
+        return null;
+      }
+      return profile;
+    }
+  },
+  logout: () => {
+    const isLocal = window.location.protocol === 'file:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.vercel.app');
+    localStorage.removeItem('userProfile');
+    if (isLocal) {
+      const isIndexPage = window.location.pathname.endsWith('index.html') || 
+                          (!window.location.pathname.includes('/pages/'));
+      Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+    } else {
+      Auth.navigateTo(SCRIPT_URL + "?page=login");
+    }
+  }
+};
+</script>
+
+
+  <!-- Fallback local testing -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        qtInit:   (maDA) => apiPost({ action: 'qt_init', maDA }),
+        qtLoad:   (maQT) => apiPost({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => apiPost({ action: 'qt_delete', maQT })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+    }
+    body { font-family: 'Inter', sans-serif; background-color: var(--bg-light); overflow-x: hidden; }
+    #sidebar {
+      width: var(--sidebar-width); height: 100vh; position: fixed; left: 0; top: 0;
+      background: var(--sidebar-bg); color: var(--sidebar-color); transition: all 0.3s;
+      z-index: 1000; display: flex; flex-direction: column; border-right: 1px solid var(--border-color);
+    }
+    #sidebar .sidebar-header { padding: 20px 24px; font-weight: 700; font-size: 1.25rem; color: #0f172a; border-bottom: 1px solid var(--border-color); }
+    #sidebar .nav-link { color: var(--sidebar-color); padding: 12px 20px; display: flex; align-items: center; gap: 12px; text-decoration: none; font-weight: 500; }
+    #sidebar .nav-link:hover, #sidebar .nav-link.active { color: var(--sidebar-active-color) !important; background: var(--sidebar-active-bg) !important; border-left: 4px solid var(--primary-color); }
+    #content { margin-left: var(--sidebar-width); width: calc(100% - var(--sidebar-width)); min-height: 100vh; padding: 20px; }
+    @media (max-width: 991.98px) {
+      #sidebar { margin-left: calc(-1 * var(--sidebar-width)); }
+      #sidebar.active { margin-left: 0; }
+      #content { margin-left: 0; width: 100%; }
+    }
+    .top-navbar { background: white; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin: -20px -20px 20px -20px; padding: 14px 20px; border-bottom: 1px solid var(--border-color); }
+    .btn-primary { background: var(--primary-gradient) !important; border: none !important; }
+    .card { border: 1px solid var(--border-color) !important; border-radius: 16px !important; overflow: hidden; }
+    .table th { background-color: #f8fafc !important; color: #475569 !important; font-weight: 600 !important; font-size: 0.78rem !important; }
+    .table td { font-size: 0.85rem; vertical-align: middle; }
+    .money { text-align: right; font-variant-numeric: tabular-nums; }
+    .nav-tabs .nav-link { font-size: 0.85rem; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span>CPM 5.0</span>
+      <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link "><i class="bi bi-speedometer2"></i><span>Tổng quan</span></a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link "><i class="bi bi-briefcase"></i><span>Dự án</span></a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link "><i class="bi bi-list-task"></i><span>Nhiệm vụ</span></a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link "><i class="bi bi-file-earmark-text"></i><span>Hợp đồng</span></a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link "><i class="bi bi-bar-chart-steps"></i><span>Sơ đồ Gantt</span></a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link "><i class="bi bi-people"></i><span>Nhân viên</span></a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link "><i class="bi bi-building"></i><span>Nhà thầu</span></a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link "><i class="bi bi-clipboard-check"></i><span>Tư vấn giám sát</span></a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link "><i class="bi bi-journal-richtext"></i><span>Báo cáo ngày</span></a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link active"><i class="bi bi-calculator"></i><span>Quyết toán DAHT</span></a>
+    </div>
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px;" title="Zalo hỗ trợ"><i class="bi bi-chat-dots-fill fs-6"></i></a>
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px;" title="Gửi Email"><i class="bi bi-envelope-fill fs-6"></i></a>
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle text-white shadow-sm" style="width: 32px; height: 32px; background-color: #ff0000;" title="Kênh Youtube"><i class="bi bi-youtube fs-6"></i></a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">A</div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất"><i class="bi bi-box-arrow-right fs-5"></i></button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+    <div class="top-navbar d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div class="d-flex align-items-center gap-3">
+        <button type="button" id="sidebarCollapse" class="btn btn-light d-lg-none"><i class="bi bi-list fs-4"></i></button>
+        <h4 class="mb-0 fw-bold">Quyết toán dự án hoàn thành</h4>
+        <span class="badge bg-light text-secondary border">TT 91/2025/TT-BTC</span>
+      </div>
+    </div>
+
+    <!-- Danh sách hồ sơ -->
+    <div class="card border-0 shadow-sm mb-4" id="listCard">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-folder2-open me-2 text-primary"></i>Hồ sơ quyết toán <span class="badge bg-light text-secondary border ms-1">TT 91/2025/TT-BTC</span></h6>
+        <div class="d-flex gap-2">
+          <select class="form-select form-select-sm" id="newProjSelect" style="min-width: 280px;"></select>
+          <button class="btn btn-primary btn-sm fw-bold text-nowrap" id="btnInit"><i class="bi bi-plus-lg"></i> Lập hồ sơ</button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr>
+              <th class="ps-4">Mã QT</th><th>Mã DA</th><th>Công trình</th><th class="text-end">Tổng dự toán</th>
+              <th class="text-end">Giá trị ĐN quyết toán</th><th>Trạng thái</th><th class="text-end pe-4" style="width:160px;">Hành động</th>
+            </tr></thead>
+            <tbody id="qtTableBody"><tr><td colspan="7" class="text-center py-5 text-muted"><div class="spinner-border text-primary spinner-border-sm me-2"></div>Đang tải...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Editor hồ sơ -->
+    <div class="card border-0 shadow-sm d-none" id="editorCard">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-pencil-square me-2 text-success"></i><span id="editorTitle">Hồ sơ</span></h6>
+        <div class="d-flex gap-2">
+          <button class="btn btn-success btn-sm fw-bold" id="btnPrint"><i class="bi bi-printer"></i> In hồ sơ</button>
+          <button class="btn btn-outline-secondary btn-sm" id="btnCloseEditor"><i class="bi bi-x-lg"></i> Đóng</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <ul class="nav nav-tabs mb-3" id="qtTabs">
+          <li class="nav-item"><button class="nav-link active" data-tab="tabInfo">Thông tin chung</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="tabNguonVon">Nguồn vốn (M01, M03)</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="tabChiPhi">Chi phí (M01, M04)</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="tabVanBan">Văn bản (M02)</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="tabTaiSan">Tài sản (M05, M06)</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="tabCongNo">Công nợ (M07)</button></li>
+        </ul>
+
+        <!-- Tab: Thông tin chung -->
+        <div id="tabInfo" class="qt-tab">
+          <form id="infoForm" class="row g-3"></form>
+          <div class="mt-3">
+            <button type="button" class="btn btn-primary fw-bold px-4" id="btnSaveInfo"><i class="bi bi-save"></i> Lưu thông tin</button>
+            <button type="button" class="btn btn-outline-primary" id="btnSumChiPhi" title="Giá trị ĐN quyết toán = tổng cột Giá trị ĐN QT của bảng Chi phí"><i class="bi bi-calculator"></i> Tính giá trị QT từ bảng chi phí</button>
+            <span id="infoMsg" class="ms-2 small"></span>
+          </div>
+        </div>
+
+        <!-- Tab tables -->
+        <div id="tabNguonVon" class="qt-tab d-none"></div>
+        <div id="tabChiPhi" class="qt-tab d-none"></div>
+        <div id="tabVanBan" class="qt-tab d-none"></div>
+        <div id="tabTaiSan" class="qt-tab d-none"></div>
+        <div id="tabCongNo" class="qt-tab d-none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal sửa dòng -->
+  <div class="modal fade" id="rowModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header"><h6 class="modal-title fw-bold" id="rowModalTitle">Sửa dòng</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><form id="rowForm" class="row g-3"></form></div>
+        <div class="modal-footer">
+          <button class="btn btn-primary fw-bold" id="btnSaveRow">💾 Lưu</button>
+          <span id="rowMsg" class="small"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    document.getElementById('sidebarCollapse')?.addEventListener('click', () => document.getElementById('sidebar').classList.toggle('active'));
+    document.getElementById('sidebarCollapseMobile')?.addEventListener('click', () => document.getElementById('sidebar').classList.remove('active'));
+
+    // ─── HELPERS ───
+    function num(v) {
+      if (v === undefined || v === null || v === '') return 0;
+      const n = parseFloat(String(v).replace(/\./g, '').replace(/,/g, '.'));
+      return isNaN(n) ? 0 : n;
+    }
+    function fmt(v) {
+      const n = num(v);
+      if (n === 0) return '-';
+      return n.toLocaleString('vi-VN');
+    }
+    function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    // Đọc số tiền thành chữ tiếng Việt
+    function docTienBangChu(soTien) {
+      const n = Math.round(num(soTien));
+      if (n === 0) return 'Không đồng';
+      const chuSo = ['không','một','hai','ba','bốn','năm','sáu','bảy','tám','chín'];
+      function doc3So(so, full) {
+        let tram = Math.floor(so / 100), chuc = Math.floor((so % 100) / 10), donvi = so % 10, kq = '';
+        if (full || tram > 0) { kq += chuSo[tram] + ' trăm'; }
+        if (chuc > 1) {
+          kq += ' ' + chuSo[chuc] + ' mươi';
+          if (donvi === 1) kq += ' mốt';
+          else if (donvi === 4) kq += ' tư';
+          else if (donvi === 5) kq += ' lăm';
+          else if (donvi > 0) kq += ' ' + chuSo[donvi];
+        } else if (chuc === 1) {
+          kq += ' mười';
+          if (donvi === 5) kq += ' lăm';
+          else if (donvi > 0) kq += ' ' + chuSo[donvi];
+        } else if (donvi > 0) {
+          if (kq !== '') kq += ' lẻ';
+          if (donvi === 5 && kq !== '') kq += ' năm';
+          else kq += ' ' + chuSo[donvi];
+        }
+        return kq.trim();
+      }
+      const donViLon = ['', ' nghìn', ' triệu', ' tỷ', ' nghìn tỷ'];
+      let groups = [];
+      let x = n;
+      while (x > 0) { groups.push(x % 1000); x = Math.floor(x / 1000); }
+      let parts = [];
+      for (let i = groups.length - 1; i >= 0; i--) {
+        if (groups[i] > 0) {
+          parts.push(doc3So(groups[i], i !== groups.length - 1 && parts.length > 0) + donViLon[i]);
+        }
+      }
+      let s = parts.join(' ').replace(/\s+/g, ' ').trim();
+      s = s.charAt(0).toUpperCase() + s.slice(1);
+      return s + ' đồng';
+    }
+
+    // ─── STATE ───
+    let qtList = [];
+    let projects = [];
+    let hs = null; // hồ sơ đang mở {master, nguonVon, chiPhi, vanBan, taiSan, congNo}
+    let rowModal, rowCtx = null;
+    const NHOM_CP = ['Bồi thường, hỗ trợ, tái định cư','Xây dựng','Thiết bị','Quản lý dự án','Tư vấn','Chi phí khác','Dự phòng'];
+
+    // ─── ĐỊNH NGHĨA FIELD CHO TỪNG SHEET CHI TIẾT ───
+    const DETAIL_DEFS = {
+      nguonVon: {
+        alias: 'qtnguonvon', label: 'Nguồn vốn', tab: 'tabNguonVon',
+        fields: [
+          { key: 'nguonVon', label: 'Nguồn vốn', type: 'text' },
+          { key: 'nam', label: 'Năm', type: 'number' },
+          { key: 'vonKeHoach', label: 'Vốn kế hoạch (CĐT)', type: 'money' },
+          { key: 'thanhToanKLHT', label: 'Thanh toán KLHT (CĐT)', type: 'money' },
+          { key: 'tamUng', label: 'Tạm ứng (CĐT)', type: 'money' },
+          { key: 'vonKeHoachKB', label: 'Vốn KH (KBNN)', type: 'money' },
+          { key: 'thanhToanKLHTKB', label: 'Thanh toán KLHT (KBNN)', type: 'money' },
+          { key: 'tamUngKB', label: 'Tạm ứng (KBNN)', type: 'money' },
+          { key: 'ghiChu', label: 'Ghi chú', type: 'text' }
+        ]
+      },
+      chiPhi: {
+        alias: 'qtchiphi', label: 'Khoản mục chi phí', tab: 'tabChiPhi',
+        fields: [
+          { key: 'nhom', label: 'Nhóm chi phí', type: 'select', options: NHOM_CP },
+          { key: 'khoanMuc', label: 'Khoản mục', type: 'text' },
+          { key: 'tmdtDuyet', label: 'TMĐT duyệt', type: 'money' },
+          { key: 'duToanDuyet', label: 'Dự toán duyệt', type: 'money' },
+          { key: 'giaTriQT', label: 'Giá trị đề nghị QT', type: 'money' },
+          { key: 'nguyenNhan', label: 'Nguyên nhân tăng giảm', type: 'text' },
+          { key: 'ghiChu', label: 'Ghi chú', type: 'text' }
+        ]
+      },
+      vanBan: {
+        alias: 'qtvanban', label: 'Văn bản', tab: 'tabVanBan',
+        fields: [
+          { key: 'loai', label: 'Loại', type: 'select', options: ['Pháp lý', 'Hợp đồng', 'Kết luận thanh tra - kiểm toán'] },
+          { key: 'noiDung', label: 'Nội dung', type: 'text' },
+          { key: 'soVanBan', label: 'Số văn bản', type: 'text' },
+          { key: 'ngayBanHanh', label: 'Ngày ban hành', type: 'text' },
+          { key: 'coQuan', label: 'Cơ quan ban hành / Nhà thầu', type: 'text' },
+          { key: 'ghiChu', label: 'Ghi chú', type: 'text' }
+        ]
+      },
+      taiSan: {
+        alias: 'qttaisan', label: 'Tài sản', tab: 'tabTaiSan',
+        fields: [
+          { key: 'loai', label: 'Loại', type: 'select', options: ['Tài sản bàn giao', 'Tồn đọng giao tiếp nhận', 'Tồn đọng xử lý'] },
+          { key: 'tenTaiSan', label: 'Tên, ký hiệu tài sản / danh mục', type: 'text' },
+          { key: 'donViTinh', label: 'Đơn vị tính', type: 'text' },
+          { key: 'soLuong', label: 'Số lượng', type: 'number' },
+          { key: 'giaDonVi', label: 'Giá đơn vị (đ)', type: 'money' },
+          { key: 'nguyenGia', label: 'Tổng nguyên giá (đ)', type: 'money' },
+          { key: 'giaTriConLai', label: 'Giá trị còn lại (đ)', type: 'money' },
+          { key: 'ngayDuaVaoSD', label: 'Ngày đưa vào sử dụng', type: 'text' },
+          { key: 'loaiVon', label: 'Loại vốn', type: 'text' },
+          { key: 'donViTiepNhan', label: 'Đơn vị tiếp nhận', type: 'text' },
+          { key: 'ghiChu', label: 'Ghi chú', type: 'text' }
+        ]
+      },
+      congNo: {
+        alias: 'qtcongno', label: 'Công nợ', tab: 'tabCongNo',
+        fields: [
+          { key: 'tenDonVi', label: 'Tên cá nhân, đơn vị thực hiện', type: 'text' },
+          { key: 'noiDung', label: 'Nội dung công việc, hợp đồng', type: 'text' },
+          { key: 'giaTriQT', label: 'Giá trị đề nghị QT', type: 'money' },
+          { key: 'daGiaiNgan', label: 'Vốn đã giải ngân', type: 'money' },
+          { key: 'phaiThu', label: 'Phải thu', type: 'money' },
+          { key: 'phaiTra', label: 'Phải trả', type: 'money' },
+          { key: 'ghiChu', label: 'Ghi chú', type: 'text' }
+        ]
+      }
+    };
+
+    // Field thông tin chung (master)
+    const INFO_FIELDS = [
+      { key: 'tenCongTrinh', label: 'Tên công trình', col: 12 },
+      { key: 'coQuanChuQuan', label: 'Cơ quan chủ quản', col: 6 },
+      { key: 'chuDauTu', label: 'Chủ đầu tư', col: 6 },
+      { key: 'coQuanThamTra', label: 'Cơ quan thẩm tra (Kính gửi)', col: 6 },
+      { key: 'coQuanThanhToan', label: 'Cơ quan thanh toán (KBNN)', col: 6 },
+      { key: 'soToTrinh', label: 'Số tờ trình', col: 3 },
+      { key: 'diaDanh', label: 'Địa danh', col: 3 },
+      { key: 'ngayLap', label: 'Ngày lập (dd/MM/yyyy)', col: 3 },
+      { key: 'namQT', label: 'Năm quyết toán', col: 3 },
+      { key: 'diaDiem', label: 'Địa điểm xây dựng', col: 6 },
+      { key: 'thoiGianKCHT', label: 'Thời gian KC-HT', col: 6 },
+      { key: 'ngayNghiemThu', label: 'Ngày nghiệm thu hoàn thành', col: 3 },
+      { key: 'ngayDuaVaoSD', label: 'Ngày đưa vào sử dụng', col: 3 },
+      { key: 'maDuAnKBNN', label: 'Mã dự án (KBNN)', col: 3 },
+      { key: 'loaiVon', label: 'Loại vốn hình thành TS', col: 3 },
+      { key: 'donViTiepNhan', label: 'Đơn vị tiếp nhận tài sản', col: 6 },
+      { key: 'tongMucDauTu', label: 'Tổng mức đầu tư (đ)', col: 3, money: true },
+      { key: 'tongDuToan', label: 'Tổng dự toán (đ)', col: 3, money: true },
+      { key: 'giaTriQT', label: 'Giá trị đề nghị quyết toán (đ)', col: 3, money: true },
+      { key: 'cpThietHai', label: 'CP thiệt hại bất khả kháng (đ)', col: 3, money: true },
+      { key: 'cpKhongTaoTS', label: 'CP không tạo nên tài sản (đ)', col: 3, money: true },
+      { key: 'canCuPhapLy', label: 'Căn cứ pháp lý bổ sung (tờ trình)', col: 9 },
+      { key: 'nguoiLapBieu', label: 'Người lập biểu', col: 4 },
+      { key: 'giamDoc', label: 'Giám đốc CĐT (ký)', col: 4 },
+      { key: 'trangThai', label: 'Trạng thái', col: 4, select: ['Đang lập', 'Đã trình', 'Đã phê duyệt'] }
+    ];
+
+    // ─── DANH SÁCH HỒ SƠ ───
+    async function loadList() {
+      const tbody = document.getElementById('qtTableBody');
+      try {
+        if (API.batchList) {
+          const res = await API.batchList(['quyettoan', 'duan'], false);
+          qtList = res['quyettoan'] || [];
+          projects = res['duan'] || [];
+        } else {
+          qtList = await API.list('quyettoan') || [];
+          projects = await API.list('duan') || [];
+        }
+      } catch (e) {
+        try {
+          qtList = await API.list('quyettoan', false) || [];
+          projects = await API.list('duan') || [];
+        } catch (e2) { qtList = []; projects = []; }
+      }
+      // dropdown chọn dự án lập mới
+      const sel = document.getElementById('newProjSelect');
+      sel.innerHTML = '<option value="">— Chọn dự án để lập hồ sơ —</option>' +
+        projects.map(p => `<option value="${esc(p.maDA)}">${esc(p.maDA)} — ${esc(p.tenDA)}</option>`).join('');
+
+      if (qtList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Chưa có hồ sơ. Chọn dự án và bấm <b>Lập hồ sơ</b>.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = qtList.map(q => {
+        const ttBadge = /duyệt/i.test(q.trangThai || '') ? 'bg-success' : /trình/i.test(q.trangThai || '') ? 'bg-warning text-dark' : 'bg-secondary';
+        return `<tr>
+          <td class="ps-4 fw-bold">${esc(q.maQT)}</td>
+          <td>${esc(q.maDA)}</td>
+          <td>${esc(q.tenCongTrinh)}</td>
+          <td class="money">${fmt(q.tongDuToan)}</td>
+          <td class="money fw-bold text-primary">${fmt(q.giaTriQT)}</td>
+          <td><span class="badge ${ttBadge}">${esc(q.trangThai || 'Đang lập')}</span></td>
+          <td class="text-end pe-4">
+            <button class="btn btn-sm btn-outline-primary" onclick="openHoSo('${esc(q.maQT)}')" title="Mở hồ sơ"><i class="bi bi-pencil-square"></i></button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteHoSo('${esc(q.maQT)}')" title="Xóa hồ sơ"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.getElementById('btnInit').addEventListener('click', async () => {
+      const maDA = document.getElementById('newProjSelect').value;
+      if (!maDA) { alert('Vui lòng chọn dự án!'); return; }
+      const btn = document.getElementById('btnInit');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang khởi tạo...';
+      try {
+        const res = await API.qtInit(maDA);
+        alert('Đã khởi tạo hồ sơ ' + res.maQT + '\nTự động kéo ' + (res.soHopDong || 0) + ' hợp đồng vào Mẫu 02 & Mẫu 07.');
+        await loadList();
+        openHoSo(res.maQT);
+      } catch (e) {
+        alert('Lỗi: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-plus-lg"></i> Lập hồ sơ';
+      }
+    });
+
+    window.deleteHoSo = async function(maQT) {
+      if (!confirm('Xóa hồ sơ ' + maQT + ' và toàn bộ dòng chi tiết?')) return;
+      try {
+        await API.qtDelete(maQT);
+        if (hs && hs.master && hs.master.maQT === maQT) closeEditor();
+        loadList();
+      } catch (e) { alert('Lỗi: ' + e.message); }
+    };
+
+    // ─── EDITOR ───
+    window.openHoSo = async function(maQT) {
+      document.getElementById('editorCard').classList.remove('d-none');
+      document.getElementById('editorTitle').textContent = 'Đang tải ' + maQT + '...';
+      try {
+        hs = await API.qtLoad(maQT);
+        if (!hs || !hs.master) throw new Error('Không tìm thấy hồ sơ');
+        document.getElementById('editorTitle').textContent = hs.master.maQT + ' — ' + (hs.master.tenCongTrinh || '');
+        renderInfoForm();
+        Object.keys(DETAIL_DEFS).forEach(renderDetailTab);
+        document.getElementById('editorCard').scrollIntoView({ behavior: 'smooth' });
+      } catch (e) {
+        alert('Lỗi tải hồ sơ: ' + e.message);
+        closeEditor();
+      }
+    };
+
+    function closeEditor() {
+      hs = null;
+      document.getElementById('editorCard').classList.add('d-none');
+    }
+    document.getElementById('btnCloseEditor').addEventListener('click', closeEditor);
+
+    // Tabs
+    document.querySelectorAll('#qtTabs .nav-link').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#qtTabs .nav-link').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.qt-tab').forEach(t => t.classList.add('d-none'));
+        document.getElementById(btn.dataset.tab).classList.remove('d-none');
+      });
+    });
+
+    // Tab Thông tin chung
+    function renderInfoForm() {
+      const form = document.getElementById('infoForm');
+      form.innerHTML = INFO_FIELDS.map(f => {
+        const val = hs.master[f.key] ?? '';
+        if (f.select) {
+          return `<div class="col-md-${f.col}"><label class="form-label small fw-bold">${f.label}</label>
+            <select class="form-select form-select-sm" id="info-${f.key}">
+              ${f.select.map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('')}
+            </select></div>`;
+        }
+        return `<div class="col-md-${f.col}"><label class="form-label small fw-bold">${f.label}</label>
+          <input type="text" class="form-control form-control-sm ${f.money ? 'money' : ''}" id="info-${f.key}" value="${esc(f.money ? (num(val) || '') : val)}"></div>`;
+      }).join('');
+    }
+
+    document.getElementById('btnSaveInfo').addEventListener('click', async () => {
+      if (!hs) return;
+      const msg = document.getElementById('infoMsg');
+      const data = {};
+      INFO_FIELDS.forEach(f => {
+        const el = document.getElementById('info-' + f.key);
+        data[f.key] = f.money ? num(el.value) : el.value.trim();
+      });
+      msg.textContent = 'Đang lưu...'; msg.className = 'ms-2 small text-muted';
+      try {
+        await API.update('quyettoan', hs.master.maQT, data);
+        Object.assign(hs.master, data);
+        document.getElementById('editorTitle').textContent = hs.master.maQT + ' — ' + (hs.master.tenCongTrinh || '');
+        msg.textContent = '✅ Đã lưu'; msg.className = 'ms-2 small text-success';
+        loadList();
+      } catch (e) {
+        msg.textContent = '❌ ' + e.message; msg.className = 'ms-2 small text-danger';
+      }
+    });
+
+    document.getElementById('btnSumChiPhi').addEventListener('click', () => {
+      if (!hs) return;
+      const total = hs.chiPhi.reduce((s, r) => s + num(r.giaTriQT), 0);
+      document.getElementById('info-giaTriQT').value = total;
+      document.getElementById('infoMsg').textContent = 'Giá trị QT = ' + fmt(total) + ' đ (nhớ bấm Lưu)';
+      document.getElementById('infoMsg').className = 'ms-2 small text-primary';
+    });
+
+    // Tab chi tiết (generic)
+    function renderDetailTab(kind) {
+      const def = DETAIL_DEFS[kind];
+      const rows = hs[kind] || [];
+      const container = document.getElementById(def.tab);
+      const showCols = def.fields.filter(f => f.type !== 'hidden').slice(0, 7);
+      let html = `<div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="small text-muted">${rows.length} dòng</span>
+        <button class="btn btn-sm btn-primary" onclick="openRowModal('${kind}', null)"><i class="bi bi-plus-lg"></i> Thêm dòng</button>
+      </div>
+      <div class="table-responsive"><table class="table table-hover table-sm align-middle">
+        <thead><tr>${showCols.map(f => `<th>${f.label}</th>`).join('')}<th class="text-end" style="width:90px;"></th></tr></thead><tbody>`;
+      if (rows.length === 0) {
+        html += `<tr><td colspan="${showCols.length + 1}" class="text-center text-muted py-3">Chưa có dòng nào</td></tr>`;
+      } else {
+        rows.forEach((r, i) => {
+          html += `<tr>${showCols.map(f => `<td class="${f.type === 'money' ? 'money' : ''}">${f.type === 'money' ? fmt(r[f.key]) : esc(r[f.key])}</td>`).join('')}
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-primary py-0" onclick="openRowModal('${kind}', ${i})"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteRow('${kind}', ${i})"><i class="bi bi-trash"></i></button>
+            </td></tr>`;
+        });
+        // Dòng tổng cho các cột tiền
+        const moneyCols = showCols.map((f, idx) => ({ f, idx })).filter(x => x.f.type === 'money');
+        if (moneyCols.length > 0) {
+          html += `<tr class="fw-bold table-light">${showCols.map(f =>
+            f.type === 'money'
+              ? `<td class="money">${fmt(rows.reduce((s, r) => s + num(r[f.key]), 0))}</td>`
+              : '<td></td>').join('')}<td class="text-end small text-muted">Tổng</td></tr>`;
+        }
+      }
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+    }
+
+    window.openRowModal = function(kind, idx) {
+      const def = DETAIL_DEFS[kind];
+      rowCtx = { kind, idx };
+      document.getElementById('rowModalTitle').textContent = (idx === null ? 'Thêm ' : 'Sửa ') + def.label;
+      const row = idx === null ? {} : hs[kind][idx];
+      const form = document.getElementById('rowForm');
+      form.innerHTML = def.fields.map(f => {
+        const val = row[f.key] ?? '';
+        if (f.type === 'select') {
+          return `<div class="col-md-6"><label class="form-label small fw-bold">${f.label}</label>
+            <select class="form-select form-select-sm" id="row-${f.key}">
+              ${f.options.map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('')}
+            </select></div>`;
+        }
+        return `<div class="col-md-6"><label class="form-label small fw-bold">${f.label}</label>
+          <input type="text" class="form-control form-control-sm" id="row-${f.key}" value="${esc(f.type === 'money' ? (num(val) || '') : val)}"></div>`;
+      }).join('');
+      document.getElementById('rowMsg').textContent = '';
+      if (!rowModal) rowModal = new bootstrap.Modal(document.getElementById('rowModal'));
+      rowModal.show();
+    };
+
+    document.getElementById('btnSaveRow').addEventListener('click', async () => {
+      if (!rowCtx || !hs) return;
+      const def = DETAIL_DEFS[rowCtx.kind];
+      const msg = document.getElementById('rowMsg');
+      const data = { maQT: hs.master.maQT };
+      def.fields.forEach(f => {
+        const el = document.getElementById('row-' + f.key);
+        data[f.key] = (f.type === 'money' || f.type === 'number') ? num(el.value) : el.value.trim();
+      });
+      msg.textContent = 'Đang lưu...'; msg.className = 'small text-muted';
+      try {
+        if (rowCtx.idx === null) {
+          const created = await API.create(def.alias, data);
+          hs[rowCtx.kind].push(created);
+        } else {
+          const row = hs[rowCtx.kind][rowCtx.idx];
+          await API.update(def.alias, row.id, data);
+          Object.assign(row, data);
+        }
+        renderDetailTab(rowCtx.kind);
+        rowModal.hide();
+      } catch (e) {
+        msg.textContent = '❌ ' + e.message; msg.className = 'small text-danger';
+      }
+    });
+
+    window.deleteRow = async function(kind, idx) {
+      const def = DETAIL_DEFS[kind];
+      const row = hs[kind][idx];
+      if (!confirm('Xóa dòng này?')) return;
+      try {
+        await API.delete(def.alias, row.id);
+        hs[kind].splice(idx, 1);
+        renderDetailTab(kind);
+      } catch (e) { alert('Lỗi: ' + e.message); }
+    };
+
+    // ─── IN HỒ SƠ (Bìa + Tờ trình + Mẫu 01-07 theo TT 91/2025/TT-BTC) ───
+    document.getElementById('btnPrint').addEventListener('click', () => {
+      if (!hs) return;
+      const w = window.open('', '_blank');
+      w.document.write(buildPrintHTML());
+      w.document.close();
+      setTimeout(() => w.print(), 600);
+    });
+
+    function buildPrintHTML() {
+      const m = hs.master;
+      const R = s => `<span class="rd">${esc(s)}</span>`;       // chữ đỏ
+      const RM = v => `<span class="rd">${fmt(v)}</span>`;       // số đỏ
+      const header2 = `
+        <table class="hdr"><tr>
+          <td style="width:45%; text-align:center;">
+            <div class="rd b">${esc(m.coQuanChuQuan)}</div>
+            <div class="rd b u">${esc(m.chuDauTu).toUpperCase()}</div>
+          </td>
+          <td style="text-align:center;">
+            <div class="b">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+            <div class="b u">Độc lập - Tự do - Hạnh phúc</div>
+          </td>
+        </tr></table>`;
+      const kyTen = `
+        <table class="hdr" style="margin-top:30px;"><tr>
+          <td style="width:50%; text-align:center;">
+            <div class="b">NGƯỜI LẬP BIỂU</div><div class="i">(Ký, ghi rõ họ tên)</div>
+            <div style="height:70px;"></div><div class="rd b">${esc(m.nguoiLapBieu)}</div>
+          </td>
+          <td style="text-align:center;">
+            <div class="rd i">${esc(m.diaDanh)}, ngày &nbsp;&nbsp; tháng &nbsp;&nbsp; năm ${esc(m.namQT)}</div>
+            <div class="b">CHỦ ĐẦU TƯ</div><div class="i">(Ký, đóng dấu, ghi rõ họ tên)</div>
+            <div style="height:55px;"></div><div class="rd b">${esc(m.giamDoc)}</div>
+          </td>
+        </tr></table>`;
+
+      // ── BÌA ──
+      const bia = `<div class="page" style="text-align:center;">
+        <div style="border:2px solid #000; padding:40px 30px; min-height:980px;">
+          <div class="b">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+          <div>Độc lập - Tự do - Hạnh phúc</div>
+          <div>--------------o0o--------------</div>
+          <div style="margin-top:200px; font-size:32px;" class="b">HỒ SƠ QUYẾT TOÁN</div>
+          <div class="b" style="margin-top:10px;">(Theo Thông tư số 91/2025/TT-BTC ngày 26 tháng 9 năm 2025<br>của Bộ trưởng Bộ Tài chính)</div>
+          <div style="margin-top:160px;" class="b u">CÔNG TRÌNH:</div>
+          <div class="rd b" style="font-size:22px; margin-top:30px;">${esc(m.tenCongTrinh)}</div>
+          <div class="rd b" style="font-size:20px; margin-top:200px;">NĂM ${esc(m.namQT)}</div>
+        </div>
+      </div>`;
+
+      // ── TỜ TRÌNH ──
+      const toTrinh = `<div class="page">
+        ${header2}
+        <table class="hdr"><tr>
+          <td style="width:45%;">Số: ${R(m.soToTrinh)} /TTr-BQLDA</td>
+          <td class="rd i" style="text-align:center;">${esc(m.diaDanh)}, ngày &nbsp;&nbsp; tháng &nbsp;&nbsp; năm ${esc(m.namQT)}</td>
+        </tr></table>
+        <div style="text-align:center; margin-top:14px;">
+          <div class="b" style="font-size:16px;">TỜ TRÌNH</div>
+          <div class="b">V/v Phê duyệt quyết toán dự án hoàn thành</div>
+          <div class="rd b">Công trình: ${esc(m.tenCongTrinh)}</div>
+        </div>
+        <p style="text-align:center; margin-top:14px;">Kính gửi: ${R(m.coQuanThamTra)}</p>
+        <p>Căn cứ Luật Xây dựng số 50/2014/QH13 ngày 18/6/2014;</p>
+        <p>Căn cứ Thông tư số 91/2025/TT-BTC ngày 26 tháng 9 năm 2025 của Bộ trưởng Bộ Tài chính quy định về hệ thống mẫu biểu sử dụng trong công tác quyết toán;</p>
+        ${m.canCuPhapLy ? `<p class="rd">${esc(m.canCuPhapLy)};</p>` : ''}
+        <p>Căn cứ các văn bản pháp lý có liên quan tại biểu mẫu số 02/QTDA;</p>
+        <p class="rd">${esc(m.chuDauTu)} kính trình ${esc(m.coQuanThamTra)} phê duyệt quyết toán dự án hoàn thành theo các nội dung chính sau:</p>
+        <table class="tt-list">
+          <tr><td style="width:35%;">1. Tên công trình:</td><td>${R(m.tenCongTrinh)}</td></tr>
+          <tr><td>2. Chủ đầu tư:</td><td>${R(m.chuDauTu)}</td></tr>
+          <tr><td>3. Địa điểm xây dựng:</td><td>${R(m.diaDiem)}</td></tr>
+          <tr><td>4. Thời gian KC-HT:</td><td>${R(m.thoiGianKCHT)}</td></tr>
+        </table>
+        <p>5. Ngày nghiệm thu hoàn thành hạng mục công trình để đưa vào sử dụng: ${R(m.ngayNghiemThu)}</p>
+        <p>6. Tổng dự toán: <b class="rd">${fmt(m.tongDuToan)} đồng</b><br>
+        <span class="i">Bằng chữ: <span class="rd">${docTienBangChu(m.tongDuToan)}</span></span></p>
+        <p>7. Giá trị đề nghị quyết toán: <b class="rd">${fmt(m.giaTriQT)} đồng</b><br>
+        <span class="i">Bằng chữ: <span class="rd">${docTienBangChu(m.giaTriQT)}</span></span></p>
+        <p>Rất mong nhận được sự quan tâm xem xét phê duyệt của ${R(m.coQuanThamTra)} tạo điều kiện cho ${R(m.chuDauTu)} hoàn thành tốt nhiệm vụ được giao./.</p>
+        <table class="hdr" style="margin-top:20px;"><tr>
+          <td style="width:50%;"><div class="b i">Nơi nhận:</div><div class="i">- Như trên;<br>- Lưu.VP.BQLDA</div></td>
+          <td style="text-align:center;"><div class="b">GIÁM ĐỐC</div><div style="height:70px;"></div><div class="rd b">${esc(m.giamDoc)}</div></td>
+        </tr></table>
+      </div>`;
+
+      // ── Tính toán dùng chung ──
+      const nv = hs.nguonVon || [];
+      const sumNV = key => nv.reduce((s, r) => s + num(r[key]), 0);
+      const tongKH = sumNV('vonKeHoach');
+      const tongKLHT = sumNV('thanhToanKLHT');
+      const tongTU = sumNV('tamUng');
+      const tongGN = tongKLHT + tongTU;
+      const cp = hs.chiPhi || [];
+      const cpByNhom = {};
+      NHOM_CP.forEach(n => cpByNhom[n] = cp.filter(r => r.nhom === n));
+      const sumCP = (rows, key) => rows.reduce((s, r) => s + num(r[key]), 0);
+      const tongQT = num(m.giaTriQT) || sumCP(cp, 'giaTriQT');
+      const giaTriTS = tongQT - num(m.cpThietHai) - num(m.cpKhongTaoTS);
+
+      // ── MẪU 01 ──
+      // Phần I: gom theo nguồn vốn (cộng các năm)
+      const nguonGroup = {};
+      nv.forEach(r => {
+        const k = r.nguonVon || 'Nguồn vốn';
+        if (!nguonGroup[k]) nguonGroup[k] = { kh: 0, gn: 0 };
+        nguonGroup[k].kh += num(r.vonKeHoach);
+        nguonGroup[k].gn += num(r.thanhToanKLHT) + num(r.tamUng);
+      });
+      let m01_I = '';
+      Object.keys(nguonGroup).forEach(k => {
+        m01_I += `<tr><td class="i">&nbsp;&nbsp;+ ${esc(k)}</td><td class="r rd"></td><td class="r rd">${fmt(nguonGroup[k].kh)}</td><td class="r rd">${fmt(nguonGroup[k].gn)}</td></tr>`;
+      });
+      let m01_II = '';
+      NHOM_CP.forEach((nhom, i) => {
+        const rows = cpByNhom[nhom];
+        const dt = sumCP(rows, 'tmdtDuyet') || sumCP(rows, 'duToanDuyet');
+        const qt = sumCP(rows, 'giaTriQT');
+        m01_II += `<tr><td class="c">${i + 1}</td><td>${esc(nhom)}</td><td class="r rd">${fmt(dt)}</td><td class="r rd">${fmt(qt)}</td><td class="r rd">${fmt(qt - dt)}</td></tr>`;
+      });
+      const tongDT_cp = sumCP(cp, 'tmdtDuyet') || sumCP(cp, 'duToanDuyet');
+      const mau01 = `<div class="page">
+        ${header2}
+        <div style="text-align:right;" class="i sm">Mẫu số 01/QTDA — Thông tư số 91/2025/TT-BTC</div>
+        <div style="text-align:center; margin-top:8px;"><div class="b" style="font-size:15px;">BÁO CÁO</div>
+        <div class="b">Tổng hợp quyết toán vốn đầu tư dự án hoàn thành</div></div>
+        <p>- Tên dự án: ${R(m.tenCongTrinh)}<br>
+        - Giá trị tổng mức đầu tư được phê duyệt hoặc điều chỉnh lần cuối: <b class="rd">${fmt(m.tongMucDauTu)} đồng</b><br>
+        - Chủ đầu tư: ${R(m.chuDauTu)}</p>
+        <div class="b">I. Vốn đầu tư:</div>
+        <table class="grid">
+          <tr class="b c"><td style="width:6%;">Số TT</td><td style="width:38%;">Nội dung</td><td>TMĐT / dự toán được duyệt</td><td>Vốn kế hoạch được giao</td><td>Vốn đã giải ngân</td></tr>
+          <tr class="b"><td></td><td class="c">Tổng cộng</td><td class="r rd">${fmt(m.tongMucDauTu)}</td><td class="r rd">${fmt(tongKH)}</td><td class="r rd">${fmt(tongGN)}</td></tr>
+          <tr class="b"><td class="c">1</td><td>Vốn đầu tư công</td><td class="r rd">${fmt(m.tongMucDauTu)}</td><td class="r rd">${fmt(tongKH)}</td><td class="r rd">${fmt(tongGN)}</td></tr>
+          <tr class="b i"><td class="c">1.1</td><td>Vốn ngân sách nhà nước</td><td class="r rd">${fmt(m.tongMucDauTu)}</td><td class="r rd">${fmt(tongKH)}</td><td class="r rd">${fmt(tongGN)}</td></tr>
+          <tr><td></td><td>- Vốn ngân sách trung ương</td><td class="r">-</td><td class="r">-</td><td class="r">-</td></tr>
+          <tr><td></td><td>- Vốn ngân sách địa phương</td><td class="r rd">${fmt(m.tongMucDauTu)}</td><td class="r rd">${fmt(tongKH)}</td><td class="r rd">${fmt(tongGN)}</td></tr>
+          ${m01_I}
+          <tr class="b i"><td class="c">1.2</td><td>Vốn từ nguồn thu hợp pháp khác</td><td class="r">-</td><td class="r">-</td><td class="r">-</td></tr>
+          <tr class="b"><td class="c">2</td><td>Vốn khác (nếu có)</td><td class="r">-</td><td class="r">-</td><td class="r">-</td></tr>
+        </table>
+        <div class="b" style="margin-top:10px;">II. Chi phí đầu tư:</div>
+        <table class="grid">
+          <tr class="b c"><td style="width:6%;">Số TT</td><td style="width:34%;">Nội dung chi phí</td><td>TMĐT / dự toán được duyệt</td><td>Giá trị đề nghị quyết toán</td><td>Tăng (+), giảm (-)</td></tr>
+          <tr class="b"><td></td><td class="c">Tổng số</td><td class="r rd">${fmt(tongDT_cp)}</td><td class="r rd">${fmt(tongQT)}</td><td class="r rd">${fmt(tongQT - tongDT_cp)}</td></tr>
+          ${m01_II}
+        </table>
+        <p style="margin-top:8px;">
+        <b>III. Chi phí đầu tư được phép không tính vào giá trị tài sản:</b> ${RM(num(m.cpThietHai) + num(m.cpKhongTaoTS))} đồng; trong đó:<br>
+        &nbsp;&nbsp;1. Chi phí thiệt hại do các nguyên nhân bất khả kháng: ${RM(m.cpThietHai)} đồng.<br>
+        &nbsp;&nbsp;2. Chi phí không tạo nên tài sản: ${RM(m.cpKhongTaoTS)} đồng.<br>
+        <b>IV. Giá trị tài sản hình thành là kết quả của quá trình thực hiện dự án:</b> <b class="rd">${fmt(giaTriTS)} đồng</b><br>
+        &nbsp;&nbsp;1. Giá trị thực tế: ${RM(giaTriTS)} đồng &nbsp;&nbsp; 2. Giá trị quy đổi (nếu có): ${RM(0)} đồng</p>
+        <p class="sm"><b>V. Thuyết minh báo cáo quyết toán:</b><br>
+        1. Tình hình thực hiện dự án: Thuận lợi, khó khăn: Không<br>
+        2. Nhận xét, đánh giá thực hiện dự án: Chấp hành trình tự thủ tục quản lý dự án theo quy định pháp luật.<br>
+        3. Kiến nghị: ${esc(m.ghiChu || 'Không')}</p>
+        ${kyTen}
+      </div>`;
+
+      // ── MẪU 02 ──
+      const vb = hs.vanBan || [];
+      const vbGroup = loai => vb.filter(r => (r.loai || '') === loai);
+      const vbRows = (rows) => rows.length === 0
+        ? '<tr><td></td><td>Không có</td><td></td><td></td></tr>'
+        : rows.map((r, i) => `<tr><td class="c">${i + 1}</td><td class="rd">${esc(r.noiDung)}</td><td class="rd">${esc(r.soVanBan)} ${r.ngayBanHanh ? 'ngày ' + esc(r.ngayBanHanh) : ''}</td><td class="rd">${esc(r.coQuan)}</td></tr>`).join('');
+      const mau02 = `<div class="page">
+        ${header2}
+        <div style="text-align:right;" class="i sm">Mẫu số 02/QTDA — Thông tư số 91/2025/TT-BTC</div>
+        <div style="text-align:center; margin-top:8px;" class="b">DANH MỤC VĂN BẢN</div>
+        <table class="grid" style="margin-top:8px;">
+          <tr class="b c"><td style="width:6%;">Số TT</td><td style="width:44%;">Nội dung</td><td style="width:24%;">Số, ngày, tháng, năm ban hành</td><td>Cơ quan ban hành</td></tr>
+          <tr class="b"><td class="c">I</td><td colspan="3">Các văn bản pháp lý</td></tr>
+          ${vbRows(vbGroup('Pháp lý'))}
+          <tr class="b"><td class="c">II</td><td colspan="3">Hợp đồng, phụ lục hợp đồng (nếu có), hợp đồng bổ sung (nếu có)</td></tr>
+          ${vbRows(vbGroup('Hợp đồng'))}
+          <tr class="b"><td class="c">III</td><td colspan="3">Kết luận của các cơ quan Thanh tra, Kiểm toán nhà nước, kiểm tra, kết quả điều tra</td></tr>
+          ${vbRows(vbGroup('Kết luận thanh tra - kiểm toán'))}
+        </table>
+        ${kyTen}
+      </div>`;
+
+      // ── MẪU 03 ──
+      const years = [...new Set(nv.map(r => String(r.nam || '')))].sort();
+      const nvRow = (label, r) => `<tr><td>&nbsp;&nbsp;${esc(label)}</td>
+        <td class="r rd">${fmt(r.vonKeHoach)}</td><td class="r rd">${fmt(num(r.thanhToanKLHT) + num(r.tamUng))}</td><td class="r rd">${fmt(r.thanhToanKLHT)}</td><td class="r rd">${fmt(r.tamUng)}</td>
+        <td class="r rd">${fmt(r.vonKeHoachKB)}</td><td class="r rd">${fmt(num(r.thanhToanKLHTKB) + num(r.tamUngKB))}</td><td class="r rd">${fmt(r.thanhToanKLHTKB)}</td><td class="r rd">${fmt(r.tamUngKB)}</td>
+        <td class="r">${fmt((num(r.thanhToanKLHTKB) + num(r.tamUngKB)) - (num(r.thanhToanKLHT) + num(r.tamUng)))}</td></tr>`;
+      // Lũy kế theo nguồn
+      let m03Rows = '';
+      Object.keys(nguonGroup).forEach(k => {
+        const rows = nv.filter(r => r.nguonVon === k);
+        const agg = key => rows.reduce((s, r) => s + num(r[key]), 0);
+        m03Rows += nvRow('- ' + k, {
+          vonKeHoach: agg('vonKeHoach'), thanhToanKLHT: agg('thanhToanKLHT'), tamUng: agg('tamUng'),
+          vonKeHoachKB: agg('vonKeHoachKB'), thanhToanKLHTKB: agg('thanhToanKLHTKB'), tamUngKB: agg('tamUngKB')
+        });
+      });
+      let m03Years = '';
+      years.forEach((y, i) => {
+        m03Years += `<tr class="b"><td>2.${i + 1} Năm ${esc(y)}</td><td colspan="9"></td></tr>` +
+          nv.filter(r => String(r.nam) === y).map(r => nvRow('- ' + (r.nguonVon || ''), r)).join('');
+      });
+      const tongKHKB = sumNV('vonKeHoachKB'), tongGNKB = sumNV('thanhToanKLHTKB') + sumNV('tamUngKB');
+      const mau03 = `<div class="page landscape">
+        ${header2}
+        <div style="text-align:right;" class="i sm">Mẫu số 03/QTDA — Thông tư số 91/2025/TT-BTC</div>
+        <div style="text-align:center; margin-top:8px;" class="b" style="font-size:15px;">BẢNG ĐỐI CHIẾU SỐ LIỆU</div>
+        <p class="sm">- Tên dự án: ${R(m.tenCongTrinh)} &nbsp;&nbsp; - Mã dự án: ${R(m.maDuAnKBNN)}<br>
+        - Chủ đầu tư: ${R(m.chuDauTu)} &nbsp;&nbsp; - Cơ quan thanh toán: ${R(m.coQuanThanhToan)}</p>
+        <div class="b sm">I. Tình hình giải ngân:</div>
+        <table class="grid sm">
+          <tr class="b c"><td rowspan="2" style="width:18%;">Nội dung</td><td colspan="4">Số liệu của chủ đầu tư</td><td colspan="4">Số liệu của cơ quan thanh toán</td><td rowspan="2">Chênh lệch</td></tr>
+          <tr class="b c"><td>Vốn KH</td><td>Tổng GN</td><td>TT KLHT</td><td>Tạm ứng</td><td>Vốn KH</td><td>Tổng GN</td><td>TT KLHT</td><td>Tạm ứng</td></tr>
+          <tr class="b"><td>1. Lũy kế từ khởi công</td>
+            <td class="r rd">${fmt(tongKH)}</td><td class="r rd">${fmt(tongGN)}</td><td class="r rd">${fmt(tongKLHT)}</td><td class="r rd">${fmt(tongTU)}</td>
+            <td class="r rd">${fmt(tongKHKB)}</td><td class="r rd">${fmt(tongGNKB)}</td><td class="r rd">${fmt(sumNV('thanhToanKLHTKB'))}</td><td class="r rd">${fmt(sumNV('tamUngKB'))}</td>
+            <td class="r">${fmt(tongGNKB - tongGN)}</td></tr>
+          ${m03Rows}
+          <tr class="b"><td>2. Chi tiết hàng năm:</td><td colspan="9"></td></tr>
+          ${m03Years}
+        </table>
+        <p class="sm">II. Nhận xét, giải thích nguyên nhân chênh lệch, kiến nghị của cơ quan kiểm soát, thanh toán: .......................</p>
+        <table class="hdr" style="margin-top:16px;"><tr>
+          <td style="width:50%; text-align:center;"><div class="rd i">Ngày &nbsp; tháng &nbsp; năm ${esc(m.namQT)}</div><div class="b">CHỦ ĐẦU TƯ</div><div class="i">(Ký, đóng dấu, ghi rõ họ tên)</div><div style="height:60px;"></div><div class="rd b">${esc(m.giamDoc)}</div></td>
+          <td style="text-align:center;"><div class="i">Ngày &nbsp; tháng &nbsp; năm .....</div><div class="b">THỦ TRƯỞNG CƠ QUAN THANH TOÁN</div><div class="i">(Ký, đóng dấu, ghi rõ họ tên)</div></td>
+        </tr></table>
+      </div>`;
+
+      // ── MẪU 04 ──
+      const roman = ['I','II','III','IV','V','VI','VII'];
+      let m04Rows = '';
+      NHOM_CP.forEach((nhom, gi) => {
+        const rows = cpByNhom[nhom];
+        const sTM = sumCP(rows, 'tmdtDuyet'), sDT = sumCP(rows, 'duToanDuyet'), sQT = sumCP(rows, 'giaTriQT');
+        m04Rows += `<tr class="b"><td class="c">${roman[gi]}</td><td>${esc(nhom)}</td><td class="r rd">${fmt(sTM)}</td><td class="r rd">${fmt(sDT)}</td><td class="r rd">${fmt(sQT)}</td><td></td></tr>`;
+        rows.forEach((r, i) => {
+          m04Rows += `<tr><td class="c">${i + 1}</td><td class="rd">${esc(r.khoanMuc)}</td><td class="r rd">${fmt(r.tmdtDuyet)}</td><td class="r rd">${fmt(r.duToanDuyet)}</td><td class="r rd">${fmt(r.giaTriQT)}</td><td class="rd sm">${esc(r.nguyenNhan)}</td></tr>`;
+        });
+      });
+      const mau04 = `<div class="page">
+        ${header2}
+        <div style="text-align:right;" class="i sm">Mẫu số 04/QTDA — Thông tư số 91/2025/TT-BTC</div>
+        <div style="text-align:center; margin-top:8px;" class="b">CHI TIẾT CHI PHÍ ĐẦU TƯ ĐỀ NGHỊ QUYẾT TOÁN</div>
+        <table class="grid" style="margin-top:8px;">
+          <tr class="b c"><td style="width:6%;">Số TT</td><td style="width:34%;">Nội dung chi phí</td><td>TMĐT được duyệt</td><td>Tổng dự toán được duyệt</td><td>Giá trị đề nghị quyết toán</td><td style="width:12%;">Nguyên nhân tăng, giảm</td></tr>
+          <tr class="b"><td></td><td class="c">Tổng số</td><td class="r rd">${fmt(sumCP(cp, 'tmdtDuyet'))}</td><td class="r rd">${fmt(sumCP(cp, 'duToanDuyet'))}</td><td class="r rd">${fmt(sumCP(cp, 'giaTriQT'))}</td><td></td></tr>
+          ${m04Rows}
+        </table>
+        ${kyTen}
+      </div>`;
+
+      // ── MẪU 05 ──
+      const tsBanGiao = (hs.taiSan || []).filter(r => r.loai === 'Tài sản bàn giao');
+      const mau05 = `<div class="page">
+        ${header2}
+        <div style="text-align:right;" class="i sm">Mẫu số 05/QTDA — Thông tư số 91/2025/TT-BTC</div>
+        <div style="text-align:center; margin-top:8px;" class="b">DANH MỤC TÀI SẢN HÌNH THÀNH SAU ĐẦU TƯ</div>
+        <table class="grid" style="margin-top:8px;">
+          <tr class="b c"><td style="width:5%;">Số TT</td><td style="width:25%;">Tên và ký hiệu tài sản; quy mô, công suất</td><td>Đơn vị tính</td><td>Số lượng</td><td>Giá đơn vị (đồng)</td><td>Tổng nguyên giá (đồng)</td><td>Ngày đưa vào sử dụng</td><td>Loại vốn</td><td>Đơn vị tiếp nhận</td></tr>
+          ${tsBanGiao.length === 0 ? '<tr><td colspan="9" class="c">—</td></tr>' : tsBanGiao.map((r, i) =>
+            `<tr><td class="c">${i + 1}</td><td class="rd">${esc(r.tenTaiSan)}</td><td class="c">${esc(r.donViTinh)}</td><td class="c rd">${esc(r.soLuong)}</td><td class="r rd">${fmt(r.giaDonVi)}</td><td class="r rd">${fmt(r.nguyenGia)}</td><td class="c rd">${esc(r.ngayDuaVaoSD)}</td><td class="c rd">${esc(r.loaiVon)}</td><td class="rd">${esc(r.donViTiepNhan)}</td></tr>`).join('')}
+        </table>
+        ${kyTen}
+      </div>`;
+
+      // ── MẪU 06 ──
+      const tdRows = loai => (hs.taiSan || []).filter(r => r.loai === loai);
+      const m06row = rows => rows.length === 0 ? '<tr><td colspan="7" class="c">—</td></tr>' :
+        rows.map((r, i) => `<tr><td class="c">${i + 1}</td><td class="rd">${esc(r.tenTaiSan)}</td><td class="c">${esc(r.donViTinh)}</td><td class="c rd">${esc(r.soLuong)}</td><td class="r rd">${fmt(r.giaDonVi)}</td><td class="r rd">${fmt(r.giaTriConLai)}</td><td class="rd">${esc(r.donViTiepNhan)}</td></tr>`).join('');
+      const mau06 = `<div class="page">
+        ${header2}
+        <div style="text-align:right;" class="i sm">Mẫu số 06/QTDA — Thông tư số 91/2025/TT-BTC</div>
+        <div style="text-align:center; margin-top:8px;" class="b">CHI TIẾT VẬT TƯ, VẬT LIỆU, THIẾT BỊ TỒN ĐỌNG</div>
+        <table class="grid" style="margin-top:8px;">
+          <tr class="b c"><td style="width:6%;">Số TT</td><td style="width:30%;">Danh mục</td><td>Đơn vị tính</td><td>Số lượng</td><td>Giá đơn vị (đồng)</td><td>Giá trị còn lại (đồng)</td><td>Đơn vị tiếp nhận hoặc xử lý</td></tr>
+          <tr class="b"><td class="c">I</td><td colspan="6">Vật tư, vật liệu, thiết bị tồn đọng giao cho đơn vị tiếp nhận</td></tr>
+          ${m06row(tdRows('Tồn đọng giao tiếp nhận'))}
+          <tr class="b"><td class="c">II</td><td colspan="6">Vật tư, vật liệu, thiết bị tồn đọng xử lý theo quy định</td></tr>
+          ${m06row(tdRows('Tồn đọng xử lý'))}
+        </table>
+        ${kyTen}
+      </div>`;
+
+      // ── MẪU 07 ──
+      const cn = hs.congNo || [];
+      const sumCN = key => cn.reduce((s, r) => s + num(r[key]), 0);
+      const mau07 = `<div class="page">
+        ${header2}
+        <div style="text-align:right;" class="i sm">Mẫu số 07/QTDA — Thông tư số 91/2025/TT-BTC</div>
+        <div style="text-align:center; margin-top:8px;" class="b">TÌNH HÌNH CÔNG NỢ CỦA DỰ ÁN</div>
+        <table class="grid" style="margin-top:8px;">
+          <tr class="b c"><td style="width:5%;" rowspan="2">Số TT</td><td style="width:24%;" rowspan="2">Tên cá nhân, đơn vị thực hiện</td><td style="width:18%;" rowspan="2">Nội dung công việc, hợp đồng</td><td rowspan="2">Giá trị đề nghị quyết toán</td><td rowspan="2">Vốn đã giải ngân</td><td colspan="2">Công nợ đến ngày khóa sổ</td><td rowspan="2" style="width:6%;">Ghi chú</td></tr>
+          <tr class="b c"><td>Phải thu</td><td>Phải trả</td></tr>
+          <tr class="b"><td></td><td class="rd c">Tổng</td><td></td><td class="r rd">${fmt(sumCN('giaTriQT'))}</td><td class="r rd">${fmt(sumCN('daGiaiNgan'))}</td><td class="r rd">${fmt(sumCN('phaiThu'))}</td><td class="r rd">${fmt(sumCN('phaiTra'))}</td><td></td></tr>
+          ${cn.map((r, i) => `<tr><td class="c">${i + 1}</td><td class="rd">${esc(r.tenDonVi)}</td><td class="rd">${esc(r.noiDung)}</td><td class="r rd">${fmt(r.giaTriQT)}</td><td class="r rd">${fmt(r.daGiaiNgan)}</td><td class="r rd">${fmt(r.phaiThu)}</td><td class="r rd">${fmt(r.phaiTra)}</td><td class="sm">${esc(r.ghiChu)}</td></tr>`).join('')}
+        </table>
+        ${kyTen}
+      </div>`;
+
+      return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>Hồ sơ quyết toán — ${esc(m.tenCongTrinh)}</title>
+      <style>
+        body { font-family: 'Times New Roman', Times, serif; font-size: 13px; color: #000; margin: 0; }
+        .page { width: 190mm; min-height: 270mm; margin: 0 auto; padding: 10mm 8mm; page-break-after: always; background: #fff; }
+        .rd { color: #c00000; }
+        .b { font-weight: bold; } .i { font-style: italic; } .u { text-decoration: underline; }
+        .c { text-align: center; } .r { text-align: right; } .sm { font-size: 11.5px; }
+        table.hdr { width: 100%; border-collapse: collapse; } table.hdr td { vertical-align: top; padding: 2px; }
+        table.grid { width: 100%; border-collapse: collapse; }
+        table.grid td { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
+        table.tt-list { width: 100%; } table.tt-list td { padding: 3px 5px; }
+        p { margin: 6px 0; text-align: justify; }
+        @media print { .page { margin: 0; } }
+      </style></head><body>
+      ${bia}${toTrinh}${mau01}${mau02}${mau03}${mau04}${mau05}${mau06}${mau07}
+      </body></html>`;
+    }
+
+    // ─── KHỞI TẠO ───
+    loadList();
+  </script>
+</body>
+</html>

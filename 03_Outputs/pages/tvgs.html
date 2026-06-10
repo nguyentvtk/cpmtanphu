@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cổng Tư vấn giám sát — CPM 5.0</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body { background-color: #f1f5f9; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .portal-header { background: linear-gradient(135deg, #198754, #20c997); color: #fff; border-radius: 12px; }
+    .table th { font-size: 0.78rem; text-transform: uppercase; color: #64748b; }
+    .table td { font-size: 0.88rem; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div class="container py-4" style="max-width: 1000px;">
+
+    <!-- Header -->
+    <div class="portal-header p-4 mb-4 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <h4 class="fw-bold mb-1"><i class="bi bi-clipboard-check me-2"></i>Cổng Tư vấn giám sát</h4>
+        <div class="small opacity-75">CPM 5.0 — Hệ thống Quản lý Dự án</div>
+      </div>
+      <div class="text-end">
+        <div class="fw-bold" id="tvgsTenDN">—</div>
+        <div class="small opacity-75">MSDN: <span id="tvgsMaSoDN">—</span></div>
+        <div class="mt-2 d-flex gap-2 justify-content-end">
+          <button class="btn btn-light btn-sm" id="btnChangePass"><i class="bi bi-key"></i> Đổi mật khẩu</button>
+          <button class="btn btn-outline-light btn-sm" id="btnLogout"><i class="bi bi-box-arrow-right"></i> Đăng xuất</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Thông tin lịch báo cáo & vi phạm -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <div class="card p-3 h-100">
+          <div class="small text-muted fw-bold">📅 Chu kỳ báo cáo</div>
+          <div class="fs-5 fw-bold" id="infoChuKy">Chưa thiết lập</div>
+          <div class="small text-muted" id="infoHanNop"></div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card p-3 h-100">
+          <div class="small text-muted fw-bold">⚠️ Số lần vi phạm</div>
+          <div class="fs-5 fw-bold" id="infoViPham">0/3</div>
+          <div class="small text-muted">Trễ hạn 3 lần sẽ bị xử lý kỷ luật</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card p-3 h-100">
+          <div class="small text-muted fw-bold">🔖 Trạng thái</div>
+          <div class="fs-5 fw-bold" id="infoTrangThai">—</div>
+          <div class="small text-muted" id="infoBaoCaoGanNhat"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Form nộp báo cáo -->
+    <div class="card p-4 mb-4">
+      <h5 class="fw-bold mb-3"><i class="bi bi-send me-2 text-success"></i>Nộp Báo cáo giám sát</h5>
+      <form id="reportForm" class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Hợp đồng giám sát <span class="text-danger">*</span></label>
+          <select class="form-select" id="rp-maHD" required></select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Đánh giá chất lượng <span class="text-danger">*</span></label>
+          <select class="form-select" id="rp-danhGia" required>
+            <option value="Đạt">Đạt</option>
+            <option value="Đạt có điều kiện">Đạt có điều kiện</option>
+            <option value="Không đạt">Không đạt</option>
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-bold">Hạng mục kiểm tra <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="rp-hangMuc" placeholder="VD: Cốt thép sàn tầng 2, bê tông móng M2..." required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Vi phạm phát hiện</label>
+          <textarea class="form-control" id="rp-viPham" rows="2" placeholder="Không có / mô tả vi phạm..."></textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Kiến nghị</label>
+          <textarea class="form-control" id="rp-kienNghi" rows="2" placeholder="Kiến nghị xử lý, khắc phục..."></textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Hình ảnh (link, mỗi dòng 1 URL)</label>
+          <textarea class="form-control" id="rp-hinhAnh" rows="2" placeholder="https://..."></textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Ghi chú</label>
+          <textarea class="form-control" id="rp-ghiChu" rows="2"></textarea>
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn btn-success fw-bold px-4" id="btnSubmitReport">
+            <i class="bi bi-send"></i> Gửi báo cáo
+          </button>
+          <span id="reportMsg" class="ms-3 small"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Danh sách báo cáo đã nộp -->
+    <div class="card p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0"><i class="bi bi-journal-text me-2 text-primary"></i>Báo cáo đã nộp</h5>
+        <button class="btn btn-outline-secondary btn-sm" id="btnReload"><i class="bi bi-arrow-clockwise"></i> Tải lại</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              <th>Mã BC</th><th>Ngày</th><th>Hợp đồng</th><th>Hạng mục</th><th>Đánh giá</th><th>Vi phạm</th>
+            </tr>
+          </thead>
+          <tbody id="reportTableBody">
+            <tr><td colspan="6" class="text-center text-muted py-4">Đang tải...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal đổi mật khẩu -->
+  <div class="modal fade" id="passModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 400px;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold">🔑 Đổi mật khẩu</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="passForm">
+            <div class="mb-2">
+              <label class="form-label small fw-bold">Mật khẩu cũ</label>
+              <input type="password" class="form-control" id="pw-old" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small fw-bold">Mật khẩu mới (≥ 6 ký tự)</label>
+              <input type="password" class="form-control" id="pw-new" minlength="6" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 fw-bold mt-2" id="btnSavePass">Lưu</button>
+            <div id="passMsg" class="small text-center mt-2"></div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+  </script>
+  <?!= include('api'); ?>
+
+  <!-- Fallback khi chạy local không có include GAS -->
+  <script>
+    if (typeof API === 'undefined') {
+      if (typeof AUTH_TOKEN !== 'undefined' && AUTH_TOKEN) {
+        try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+      }
+      async function apiPost(body) {
+        const res = await fetch(SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)       => apiPost({ action: 'list',   sheet }),
+        create: (sheet, data) => apiPost({ action: 'create', sheet, data }),
+        loginTVGS: (identifier, password) => apiPost({ action: 'login_tvgs', identifier, password }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => apiPost({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+
+  <script>
+    // ─── AUTH: chỉ cho phép tài khoản TVGS ───
+    let profile = null;
+    try { profile = JSON.parse(localStorage.getItem('userProfile') || 'null'); } catch(e) {}
+
+    function goLogin() {
+      const isLocal = window.location.protocol === 'file:' ||
+                      window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1';
+      localStorage.removeItem('userProfile');
+      if (isLocal) { window.location.href = 'login.html'; }
+      else {
+        const link = document.createElement('a');
+        link.href = SCRIPT_URL + '?page=login';
+        link.target = '_top';
+        document.body.appendChild(link);
+        link.click();
+      }
+    }
+
+    if (!profile || profile.role !== 'TVGS') { goLogin(); }
+
+    // ─── HIỂN THỊ THÔNG TIN ───
+    document.getElementById('tvgsTenDN').textContent = profile.tenDN || '—';
+    document.getElementById('tvgsMaSoDN').textContent = profile.maSoDN || '—';
+    document.getElementById('infoChuKy').textContent = profile.chuKy || 'Chưa thiết lập';
+    document.getElementById('infoHanNop').textContent = profile.hanNop ? ('Hạn nộp: ' + profile.hanNop) : '';
+    const soVP = parseInt(profile.soViPham) || 0;
+    const vpEl = document.getElementById('infoViPham');
+    vpEl.textContent = soVP + '/3';
+    vpEl.className = 'fs-5 fw-bold ' + (soVP >= 3 ? 'text-danger' : soVP > 0 ? 'text-warning' : 'text-success');
+    const ttEl = document.getElementById('infoTrangThai');
+    ttEl.textContent = profile.trangThai || 'Hoạt động';
+    ttEl.className = 'fs-5 fw-bold ' + (/vi phạm/i.test(profile.trangThai || '') ? 'text-danger' : 'text-success');
+    document.getElementById('infoBaoCaoGanNhat').textContent = profile.baoCaoGanNhat ? ('BC gần nhất: ' + profile.baoCaoGanNhat) : 'Chưa có báo cáo';
+
+    // ─── DROPDOWN HỢP ĐỒNG ───
+    const hdSelect = document.getElementById('rp-maHD');
+    const hopDongs = profile.hopDongs || [];
+    hdSelect.innerHTML = hopDongs.length
+      ? hopDongs.map(hd => `<option value="${hd.maHD}" data-mada="${hd.maDA || ''}">${hd.maHD} — ${hd.tenHD}</option>`).join('')
+      : '<option value="">(Không có hợp đồng giám sát)</option>';
+
+    // ─── NỘP BÁO CÁO ───
+    document.getElementById('reportForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitReport');
+      const msg = document.getElementById('reportMsg');
+      const opt = hdSelect.selectedOptions[0];
+      if (!opt || !opt.value) { msg.textContent = 'Không có hợp đồng để báo cáo'; msg.className = 'ms-3 small text-danger'; return; }
+
+      btn.disabled = true;
+      msg.textContent = 'Đang gửi...';
+      msg.className = 'ms-3 small text-muted';
+      try {
+        await API.create('baocaotvgs', {
+          maSoDN: profile.maSoDN,
+          tenDN: profile.tenDN,
+          maHD: opt.value,
+          maDA: opt.dataset.mada || '',
+          hangMuc: document.getElementById('rp-hangMuc').value.trim(),
+          danhGia: document.getElementById('rp-danhGia').value,
+          viPham: document.getElementById('rp-viPham').value.trim(),
+          kienNghi: document.getElementById('rp-kienNghi').value.trim(),
+          hinhAnh: document.getElementById('rp-hinhAnh').value.trim(),
+          ghiChu: document.getElementById('rp-ghiChu').value.trim()
+        });
+        msg.textContent = '✅ Đã gửi báo cáo thành công!';
+        msg.className = 'ms-3 small text-success';
+        ['rp-hangMuc','rp-viPham','rp-kienNghi','rp-hinhAnh','rp-ghiChu'].forEach(id => document.getElementById(id).value = '');
+        loadReports();
+      } catch (err) {
+        msg.textContent = '❌ ' + (err.message || 'Lỗi gửi báo cáo');
+        msg.className = 'ms-3 small text-danger';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ─── DANH SÁCH BÁO CÁO CỦA TÔI ───
+    async function loadReports() {
+      const tbody = document.getElementById('reportTableBody');
+      try {
+        const all = await API.list('baocaotvgs', false);
+        const mine = (all || []).filter(r => String(r.maSoDN || '').trim() === String(profile.maSoDN).trim())
+                                .sort((a, b) => String(b.ngay || '').localeCompare(String(a.ngay || '')));
+        if (mine.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Chưa có báo cáo nào</td></tr>';
+          return;
+        }
+        tbody.innerHTML = mine.map(r => {
+          const badge = /không/i.test(r.danhGia || '') ? 'bg-danger' : /điều kiện/i.test(r.danhGia || '') ? 'bg-warning text-dark' : 'bg-success';
+          return `<tr>
+            <td class="fw-bold">${r.maBC || ''}</td>
+            <td>${r.ngay || ''}</td>
+            <td>${r.maHD || ''}</td>
+            <td>${r.hangMuc || ''}</td>
+            <td><span class="badge ${badge}">${r.danhGia || ''}</span></td>
+            <td>${r.viPham || '—'}</td>
+          </tr>`;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Lỗi tải dữ liệu: ' + err.message + '</td></tr>';
+      }
+    }
+    loadReports();
+    document.getElementById('btnReload').addEventListener('click', loadReports);
+
+    // ─── ĐỔI MẬT KHẨU ───
+    const passModal = new bootstrap.Modal(document.getElementById('passModal'));
+    document.getElementById('btnChangePass').addEventListener('click', () => passModal.show());
+    document.getElementById('passForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('passMsg');
+      const btn = document.getElementById('btnSavePass');
+      btn.disabled = true;
+      msg.textContent = 'Đang xử lý...';
+      msg.className = 'small text-center mt-2 text-muted';
+      try {
+        await API.tvgsChangePassword(profile.maSoDN, document.getElementById('pw-old').value, document.getElementById('pw-new').value);
+        msg.textContent = '✅ Đổi mật khẩu thành công!';
+        msg.className = 'small text-center mt-2 text-success';
+        setTimeout(() => passModal.hide(), 1200);
+      } catch (err) {
+        msg.textContent = '❌ ' + (err.message || 'Lỗi');
+        msg.className = 'small text-center mt-2 text-danger';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ─── ĐĂNG XUẤT ───
+    document.getElementById('btnLogout').addEventListener('click', goLogin);
+  </script>
+</body>
+</html>

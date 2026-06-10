@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tư vấn giám sát — CPM 5.0</title>
+
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Shared API Helper -->
+  <script>
+    window.SCRIPT_URL = "<?= getScriptUrl() ?>";
+    if (window.SCRIPT_URL.startsWith("<" + "?=") || !window.SCRIPT_URL) {
+      window.SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec";
+    }
+    // Token session truyền từ Code.gs doGet()
+    window.AUTH_TOKEN = "<?= authToken ?>";
+    if (window.AUTH_TOKEN.startsWith("<" + "?=")) window.AUTH_TOKEN = "";
+    if (AUTH_TOKEN) {
+      try { localStorage.setItem('userProfile', decodeURIComponent(atob(AUTH_TOKEN))); } catch(e) {}
+    }
+  </script>
+  <!-- Auth & Navigation Helper -->
+  <script>
+    if (typeof Auth === 'undefined') {
+      window.Auth = {
+        navigateTo: (url) => {
+          if (window.location.href.indexOf('createOAuthDialog') >= 0) return;
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1';
+          if (!isLocal) {
+            const profileStr = localStorage.getItem('userProfile');
+            if (profileStr && !url.includes('token=')) {
+              const token = btoa(encodeURIComponent(profileStr));
+              url += (url.includes('?') ? '&' : '?') + 'token=' + token;
+            }
+          }
+          if (isLocal) {
+            window.location.href = url;
+          } else {
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_top';
+            if (document.body) {
+              document.body.appendChild(link);
+            } else {
+              document.documentElement.appendChild(link);
+            }
+            link.click();
+          }
+        },
+        checkAuth: (isLoginPage = false) => {
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1';
+          const profileStr = localStorage.getItem('userProfile');
+          let profile = null;
+          try {
+            if (profileStr) profile = JSON.parse(profileStr);
+          } catch(e) {
+            localStorage.removeItem('userProfile');
+          }
+          if (isLoginPage) {
+            if (profile) {
+              Auth.navigateTo(isLocal ? "../index.html" : SCRIPT_URL + "?page=index");
+            }
+          } else {
+            if (!profile) {
+              const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                                  (!window.location.pathname.includes('/pages/'));
+              Auth.navigateTo(isLocal
+                ? (isIndexPage ? "pages/login.html" : "login.html")
+                : SCRIPT_URL + "?page=login");
+              return null;
+            }
+            return profile;
+          }
+        },
+        logout: () => {
+          const isLocal = window.location.protocol === 'file:' ||
+                          window.location.hostname === 'localhost' ||
+                          window.location.hostname === '127.0.0.1';
+          localStorage.removeItem('userProfile');
+          if (isLocal) {
+            const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                                (!window.location.pathname.includes('/pages/'));
+            Auth.navigateTo(isIndexPage ? "pages/login.html" : "login.html");
+          } else {
+            Auth.navigateTo(SCRIPT_URL + "?page=login");
+          }
+        }
+      };
+    }
+
+    // Bảo mật trang: TVGS không được vào trang quản lý
+    const userProfile = Auth.checkAuth(false);
+    if (userProfile && userProfile.role === 'TVGS') {
+      Auth.navigateTo(SCRIPT_URL + "?page=tvgs");
+    }
+
+    // Quản lý trở lên: được thiết lập lịch báo cáo, đồng bộ, sửa tài khoản
+    const isManagerPlus = userProfile && (
+      /admin|giám đốc|quản lý|trưởng phòng|giamdoc/i.test(String(userProfile.role || '')) ||
+      /admin|giám đốc|quản lý|trưởng phòng/i.test(String(userProfile.chucVu || ''))
+    );
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const isLocal = window.location.protocol === 'file:' ||
+                      window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1';
+      const isIndexPage = window.location.pathname.endsWith('index.html') ||
+                          (!window.location.pathname.includes('/pages/'));
+
+      // 1. Tự động điều chỉnh link sidebar
+      document.querySelectorAll('#sidebar .nav-link').forEach(link => {
+        const hrefAttr = link.getAttribute('href');
+        if (!hrefAttr || hrefAttr === '#') return;
+        const match = hrefAttr.match(/[?&]page=([^&]+)/);
+        if (match) {
+          const page = match[1];
+          if (isLocal) {
+            if (page === 'index') {
+              link.href = isIndexPage ? 'index.html' : '../index.html';
+            } else {
+              link.href = isIndexPage ? `pages/${page}.html` : `${page}.html`;
+            }
+          } else {
+            link.href = SCRIPT_URL + "?page=" + page;
+          }
+          link.target = '_top';
+        }
+      });
+
+      // 2. Điền thông tin profile động vào sidebar
+      if (userProfile) {
+        const nameEl = document.getElementById('userName');
+        const roleEl = document.getElementById('userRole');
+        const avatarEl = document.getElementById('userAvatar');
+        if (nameEl) nameEl.textContent = userProfile.hoTen || 'User';
+        if (roleEl) roleEl.textContent = userProfile.chucVu || 'Nhân viên';
+        if (avatarEl && userProfile.hoTen) {
+          if (userProfile.avatar && userProfile.avatar.trim() !== '') {
+            avatarEl.innerHTML = `<img src="${userProfile.avatar}" alt="Avatar" class="rounded-circle" style="width: 100%; height: 100%; object-fit: cover;">`;
+          } else {
+            avatarEl.textContent = userProfile.hoTen.trim().charAt(0).toUpperCase();
+          }
+        }
+      }
+
+      // 3. Đăng ký sự kiện nút Đăng xuất
+      const btnLogout = document.getElementById('btnLogout');
+      if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+          e.preventDefault();
+          Auth.logout();
+        });
+      }
+    });
+  </script>
+  <?!= include('api'); ?>
+
+  <!-- Fallback local testing -->
+  <script>
+    if (typeof API === 'undefined') {
+      const API_URL = SCRIPT_URL;
+      async function apiPost(body) {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      }
+      window.API = {
+        list:   (sheet)            => apiPost({ action: 'list',   sheet }),
+        get:    (sheet, id)        => apiPost({ action: 'get',    sheet, id }),
+        create: (sheet, data)      => apiPost({ action: 'create', sheet, data }),
+        update: (sheet, id, data)  => apiPost({ action: 'update', sheet, id, data }),
+        delete: (sheet, id)        => apiPost({ action: 'delete', sheet, id }),
+        login:  (email, password)  => apiPost({ action: 'login',  email, password }),
+        tvgsSync: () => apiPost({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => apiPost({ action: 'tvgs_check_now' })
+      };
+    }
+  
+    // ─── SHIM TỰ PHỤC HỒI: đảm bảo API luôn có ĐỦ phương thức ───
+    // Chống mọi trường hợp include('api') hỏng hoặc file 'api' bị dán nhầm nội dung
+    if (typeof API === 'undefined') { window.API = {}; }
+    (function () {
+      const P = async (body) => {
+        const res = await fetch(window.SCRIPT_URL, { method: 'POST', redirect: 'follow', body: JSON.stringify(body) });
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data;
+      };
+      const M = {
+        list:   (sheet) => P({ action: 'list', sheet }),
+        get:    (sheet, id) => P({ action: 'get', sheet, id }),
+        create: (sheet, data) => P({ action: 'create', sheet, data }),
+        update: (sheet, id, data) => P({ action: 'update', sheet, id, data }),
+        delete: (sheet, id) => P({ action: 'delete', sheet, id }),
+        login:  (email, password) => P({ action: 'login', email, password }),
+        loginTVGS: (identifier, password) => P({ action: 'login_tvgs', identifier, password }),
+        tvgsSync: () => P({ action: 'tvgs_sync' }),
+        tvgsCheckNow: () => P({ action: 'tvgs_check_now' }),
+        tvgsChangePassword: (maSoDN, oldPassword, newPassword) => P({ action: 'tvgs_change_password', maSoDN, oldPassword, newPassword }),
+        qtInit: (maDA) => P({ action: 'qt_init', maDA }),
+        qtLoad: (maQT) => P({ action: 'qt_load', maQT }),
+        qtDelete: (maQT) => P({ action: 'qt_delete', maQT }),
+        batchList: async (sheets) => {
+          const result = {};
+          for (const sheet of sheets) {
+            try { result[sheet] = await API.list(sheet); } catch (e) { result[sheet] = []; }
+          }
+          return result;
+        },
+        clearAllCache: () => {}
+      };
+      for (const k in M) { if (typeof API[k] !== 'function') API[k] = M[k]; }
+    })();
+
+    // ─── TOAST HIỆN ĐẠI: thay thế hộp thoại alert() mặc định của trình duyệt ───
+    if (!window.__cpmToast) {
+      window.__cpmToast = true;
+      const tStyle = document.createElement('style');
+      tStyle.textContent = '#cpmToastWrap{position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:380px}' +
+        '.cpm-toast{display:flex;align-items:flex-start;gap:10px;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(2,6,23,.18);border-left:4px solid #3b82f6;font-family:Inter,system-ui,sans-serif;font-size:.875rem;color:#0f172a;animation:cpmIn .25s ease;white-space:pre-line;word-break:break-word}' +
+        '.cpm-toast.success{border-left-color:#16a34a}.cpm-toast.error{border-left-color:#dc2626}.cpm-toast.warning{border-left-color:#d97706}' +
+        '.cpm-toast .ico{font-size:1.05rem;line-height:1.3}.cpm-toast .cls{margin-left:auto;border:0;background:none;color:#94a3b8;font-size:1.05rem;line-height:1;cursor:pointer;padding:0 0 0 6px}' +
+        '.cpm-toast.out{opacity:0;transform:translateX(24px);transition:all .25s ease}' +
+        '@keyframes cpmIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}';
+      document.head.appendChild(tStyle);
+      window.cpmToast = function (msg, type) {
+        msg = String(msg == null ? '' : msg);
+        if (!type) {
+          type = /❌|⛔|lỗi|thất bại|không hợp lệ|không tìm thấy|error/i.test(msg) ? 'error'
+               : /✅|thành công|đã gửi|đã lưu|đã xóa|đồng bộ xong|đã khởi tạo|đã cài/i.test(msg) ? 'success'
+               : /⚠|vui lòng|chưa |hãy /i.test(msg) ? 'warning' : 'info';
+        }
+        const icons = { success: '✅', error: '⛔', warning: '⚠️', info: 'ℹ️' };
+        let wrap = document.getElementById('cpmToastWrap');
+        if (!wrap) {
+          wrap = document.createElement('div');
+          wrap.id = 'cpmToastWrap';
+          (document.body || document.documentElement).appendChild(wrap);
+        }
+        const t = document.createElement('div');
+        t.className = 'cpm-toast ' + type;
+        const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = icons[type] || icons.info;
+        const tx = document.createElement('span'); tx.textContent = msg;
+        const cls = document.createElement('button'); cls.className = 'cls'; cls.innerHTML = '&times;';
+        const closeFn = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+        cls.onclick = closeFn;
+        t.appendChild(ico); t.appendChild(tx); t.appendChild(cls);
+        wrap.appendChild(t);
+        setTimeout(closeFn, type === 'error' ? 6000 : 4000);
+      };
+      if (!window.showToast) window.showToast = window.cpmToast;
+      window.alert = function (msg) { window.cpmToast(msg); };
+    }
+</script>
+
+  <style>
+    :root {
+      --sidebar-width: 260px;
+      --primary-color: #4f46e5;
+      --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+      --bg-light: #f1f5f9;
+      --sidebar-bg: #ffffff;
+      --sidebar-color: #475569;
+      --sidebar-active-bg: #eedeff;
+      --sidebar-active-color: #4f46e5;
+      --border-color: #e2e8f0;
+    }
+    body { font-family: 'Inter', sans-serif; background-color: var(--bg-light); overflow-x: hidden; }
+    #sidebar {
+      width: var(--sidebar-width); height: 100vh; position: fixed; left: 0; top: 0;
+      background: var(--sidebar-bg); color: var(--sidebar-color); transition: all 0.3s;
+      z-index: 1000; display: flex; flex-direction: column; border-right: 1px solid var(--border-color);
+    }
+    #sidebar .sidebar-header {
+      padding: 20px 24px; background: var(--sidebar-bg); color: #0f172a;
+      font-weight: 700; font-size: 1.25rem; border-bottom: 1px solid var(--border-color);
+    }
+    #sidebar .nav-link {
+      color: var(--sidebar-color); padding: 12px 20px; display: flex; align-items: center;
+      gap: 12px; text-decoration: none; transition: all 0.2s ease-in-out; font-weight: 500;
+    }
+    #sidebar .nav-link:hover, #sidebar .nav-link.active {
+      color: var(--sidebar-active-color) !important;
+      background: var(--sidebar-active-bg) !important;
+      border-left: 4px solid var(--primary-color);
+    }
+    #sidebar .nav-link i { font-size: 1.1rem; }
+    #content {
+      margin-left: var(--sidebar-width); width: calc(100% - var(--sidebar-width));
+      min-height: 100vh; transition: all 0.3s; padding: 20px;
+    }
+    @media (max-width: 991.98px) {
+      #sidebar { margin-left: calc(-1 * var(--sidebar-width)); }
+      #sidebar.active { margin-left: 0; }
+      #content { margin-left: 0; width: 100%; }
+      #content.active { margin-left: var(--sidebar-width); }
+    }
+    .top-navbar {
+      background: white; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+      margin: -20px -20px 20px -20px; padding: 14px 20px; border-bottom: 1px solid var(--border-color);
+    }
+    .btn-primary {
+      background: var(--primary-gradient) !important; border: none !important;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25) !important; transition: all 0.2s ease !important;
+    }
+    .card {
+      border: 1px solid var(--border-color) !important; border-radius: 16px !important;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02) !important;
+      overflow: hidden;
+    }
+    .table th {
+      background-color: #f8fafc !important; color: #475569 !important;
+      font-weight: 600 !important; font-size: 0.8rem !important; letter-spacing: 0.05em;
+    }
+    .table td { font-size: 0.88rem; vertical-align: middle; }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header d-flex align-items-center justify-content-between">
+      <span>CPM 5.0</span>
+      <button type="button" id="sidebarCollapseMobile" class="btn btn-link text-dark d-lg-none p-0">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+
+    <div class="py-3 flex-grow-1 overflow-y-auto">
+      <a href="<?= getScriptUrl() ?>?page=index" class="nav-link ">
+        <i class="bi bi-speedometer2"></i>
+        <span>Tổng quan</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=projects" class="nav-link ">
+        <i class="bi bi-briefcase"></i>
+        <span>Dự án</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=tasks" class="nav-link ">
+        <i class="bi bi-list-task"></i>
+        <span>Nhiệm vụ</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contracts" class="nav-link ">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>Hợp đồng</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=gantt" class="nav-link ">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Sơ đồ Gantt</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=nhansu" class="nav-link ">
+        <i class="bi bi-people"></i>
+        <span>Nhân viên</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=contractors" class="nav-link ">
+        <i class="bi bi-building"></i>
+        <span>Nhà thầu</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=giamsat" class="nav-link active">
+        <i class="bi bi-clipboard-check"></i>
+        <span>Tư vấn giám sát</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=baocao" class="nav-link ">
+        <i class="bi bi-journal-richtext"></i>
+        <span>Báo cáo ngày</span>
+      </a>
+      <a href="<?= getScriptUrl() ?>?page=quyettoan" class="nav-link ">
+        <i class="bi bi-calculator"></i>
+        <span>Quyết toán DAHT</span>
+      </a>
+    </div>
+
+    <!-- Hỗ trợ kỹ thuật -->
+    <div class="px-3 py-2">
+      <div class="p-3 rounded-3 text-center" style="background: #f8fafc; border: 1px solid #f1f5f9;">
+        <div class="small fw-bold text-muted mb-2" style="font-size: 0.8rem;">Hỗ trợ kỹ thuật <span class="badge bg-light text-primary border ms-1" style="font-size: 0.65rem;">v5.0</span></div>
+        <div class="d-flex justify-content-center gap-3 mb-2">
+          <a href="https://zalo.me/0818156116" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-primary text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Zalo hỗ trợ">
+            <i class="bi bi-chat-dots-fill fs-6"></i>
+          </a>
+          <a href="mailto:nguyentvtk@gmail.com" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Gửi Email">
+            <i class="bi bi-envelope-fill fs-6"></i>
+          </a>
+          <a href="https://www.youtube.com/c/Nguy%E1%BB%85nHo%C3%A0ng1407" target="_blank" class="d-flex align-items-center justify-content-center text-decoration-none rounded-circle bg-danger text-white shadow-sm" style="width: 32px; height: 32px; transition: transform 0.2s; background-color: #ff0000 !important;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Kênh Youtube">
+            <i class="bi bi-youtube fs-6"></i>
+          </a>
+        </div>
+        <div class="text-muted" style="font-size: 0.75rem;">&copy; 2026 <span class="fw-bold text-dark">n3n</span></div>
+      </div>
+    </div>
+
+    <!-- Profile (Footer) -->
+    <div class="p-3 border-top border-secondary-subtle bg-light">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 35px; height: 35px; background: var(--primary-gradient) !important;" id="userAvatar">
+            A
+          </div>
+          <div class="small overflow-hidden text-dark">
+            <div class="fw-bold text-truncate" id="userName" style="max-width: 110px;">Admin</div>
+            <div class="text-muted text-truncate" id="userRole" style="max-width: 110px; font-size: 0.75rem;">Ban Giám đốc</div>
+          </div>
+        </div>
+        <button class="btn btn-link text-danger p-0" id="btnLogout" title="Đăng xuất">
+          <i class="bi bi-box-arrow-right fs-5"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- Top Navbar -->
+    <div class="top-navbar d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div class="d-flex align-items-center gap-3">
+        <button type="button" id="sidebarCollapse" class="btn btn-light d-lg-none">
+          <i class="bi bi-list fs-4"></i>
+        </button>
+        <h4 class="mb-0 fw-bold">Tư vấn giám sát</h4>
+      </div>
+
+    </div>
+
+    <!-- Bảng tài khoản TVGS -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-person-badge me-2 text-primary"></i>Tài khoản Nhà thầu TVGS <span class="badge bg-light text-secondary border ms-1" id="accountCount">0 tài khoản</span></h6>
+      <div class="d-flex gap-2" id="managerActions">
+        <button class="btn btn-outline-primary btn-sm d-flex align-items-center gap-2" id="btnSync" title="Quét sheet Hợp đồng (Tên HĐ chứa 'giám sát') và tạo tài khoản với mật khẩu mặc định Nhathau123">
+          <i class="bi bi-arrow-repeat"></i> Đồng bộ từ Hợp đồng
+        </button>
+        <button class="btn btn-outline-warning btn-sm d-flex align-items-center gap-2" id="btnCheckNow" title="Chạy kiểm tra trễ hạn báo cáo ngay lập tức">
+          <i class="bi bi-alarm"></i> Kiểm tra trễ hạn
+        </button>
+      </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-4">Mã số DN</th>
+                <th>Tên doanh nghiệp</th>
+                <th>Email</th>
+                <th>Chu kỳ BC</th>
+                <th>Hạn nộp</th>
+                <th>BC gần nhất</th>
+                <th class="text-center">Vi phạm</th>
+                <th>Trạng thái</th>
+                <th class="text-end pe-4" style="width: 110px;">Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="accountTableBody">
+              <tr><td colspan="9" class="text-center py-5 text-muted">
+                <div class="spinner-border text-primary spinner-border-sm me-2"></div>Đang tải...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bảng báo cáo TVGS -->
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-journal-text me-2 text-success"></i>Báo cáo giám sát đã nộp</h6>
+        <div class="d-flex gap-2">
+          <input type="text" id="reportSearch" class="form-control form-control-sm" placeholder="Tìm theo nhà thầu, hợp đồng, hạng mục..." style="min-width: 260px;">
+          <button class="btn btn-outline-secondary btn-sm" id="btnReloadReports"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-4">Mã BC</th>
+                <th>Ngày</th>
+                <th>Nhà thầu</th>
+                <th>Mã HĐ</th>
+                <th>Hạng mục kiểm tra</th>
+                <th>Đánh giá</th>
+                <th>Vi phạm phát hiện</th>
+                <th>Kiến nghị</th>
+              </tr>
+            </thead>
+            <tbody id="reportTableBody">
+              <tr><td colspan="8" class="text-center py-5 text-muted">
+                <div class="spinner-border text-primary spinner-border-sm me-2"></div>Đang tải...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal sửa tài khoản / thiết lập lịch -->
+  <div class="modal fade" id="editAccountModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold">⚙️ Thiết lập tài khoản & Lịch báo cáo</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="editAccountForm" class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">Mã số DN</label>
+              <input type="text" class="form-control" id="ea-maSoDN" readonly>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">Tên doanh nghiệp</label>
+              <input type="text" class="form-control" id="ea-tenDN" readonly>
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-bold">Email nhận cảnh báo</label>
+              <input type="email" class="form-control" id="ea-email" placeholder="email@congty.vn">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">Chu kỳ báo cáo</label>
+              <select class="form-select" id="ea-chuKy">
+                <option value="">— Chưa thiết lập —</option>
+                <option value="Hàng ngày">Hàng ngày (T2–T6)</option>
+                <option value="Hàng tuần">Hàng tuần</option>
+                <option value="Hàng tháng">Hàng tháng</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">Hạn nộp</label>
+              <select class="form-select" id="ea-hanNop"></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">Trạng thái</label>
+              <select class="form-select" id="ea-trangThai">
+                <option value="Hoạt động">Hoạt động</option>
+                <option value="Vi phạm kỷ luật">Vi phạm kỷ luật</option>
+                <option value="Ngừng hoạt động">Ngừng hoạt động</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-bold">Ghi chú</label>
+              <input type="text" class="form-control" id="ea-ghiChu">
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="ea-resetViPham">
+                <label class="form-check-label small" for="ea-resetViPham">Đặt lại số lần vi phạm về 0</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="ea-resetPassword">
+                <label class="form-check-label small" for="ea-resetPassword">Đặt lại mật khẩu về mặc định <code>Nhathau123</code></label>
+              </div>
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary fw-bold px-4" id="btnSaveAccount">💾 Lưu thiết lập</button>
+              <span id="editMsg" class="ms-2 small"></span>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // ─── SIDEBAR TOGGLE (mobile) ───
+    document.getElementById('sidebarCollapse')?.addEventListener('click', () => {
+      document.getElementById('sidebar').classList.toggle('active');
+    });
+    document.getElementById('sidebarCollapseMobile')?.addEventListener('click', () => {
+      document.getElementById('sidebar').classList.remove('active');
+    });
+
+    // ─── PHÂN QUYỀN: chỉ Quản lý trở lên mới thấy nút hành động ───
+    if (!isManagerPlus) {
+      const ma = document.getElementById('managerActions');
+      if (ma) ma.classList.add('d-none');
+    }
+
+    let accounts = [];
+    let reports = [];
+    let editModal;
+
+    // ─── HẠN NỘP ĐỘNG THEO CHU KỲ ───
+    const WEEKDAYS = ['Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7','Chủ nhật'];
+    function renderHanNopOptions(chuKy, current) {
+      const sel = document.getElementById('ea-hanNop');
+      if (chuKy === 'Hàng tuần') {
+        sel.disabled = false;
+        sel.innerHTML = WEEKDAYS.map(d => `<option value="${d}" ${d === current ? 'selected' : ''}>${d}</option>`).join('');
+        if (!current) sel.value = 'Thứ 6';
+      } else if (chuKy === 'Hàng tháng') {
+        sel.disabled = false;
+        let opts = '';
+        for (let i = 1; i <= 28; i++) {
+          opts += `<option value="${i}" ${String(i) === String(current) ? 'selected' : ''}>Ngày ${i}</option>`;
+        }
+        sel.innerHTML = opts;
+        if (!current) sel.value = '28';
+      } else if (chuKy === 'Hàng ngày') {
+        sel.disabled = true;
+        sel.innerHTML = '<option value="">Cuối mỗi ngày làm việc</option>';
+      } else {
+        sel.disabled = true;
+        sel.innerHTML = '<option value="">—</option>';
+      }
+    }
+    document.getElementById('ea-chuKy').addEventListener('change', (e) => renderHanNopOptions(e.target.value, ''));
+
+    // ─── TẢI DỮ LIỆU ───
+    async function loadAccounts() {
+      const tbody = document.getElementById('accountTableBody');
+      try {
+        accounts = await API.list('tvgs', false) || [];
+        document.getElementById('accountCount').textContent = accounts.length + ' tài khoản';
+        if (accounts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Chưa có tài khoản TVGS. ' +
+            (isManagerPlus ? 'Bấm <b>Đồng bộ từ Hợp đồng</b> để tạo tự động.' : '') + '</td></tr>';
+          return;
+        }
+        tbody.innerHTML = accounts.map((a, i) => {
+          const soVP = parseInt(a.soViPham) || 0;
+          const vpBadge = soVP >= 3 ? 'bg-danger' : soVP > 0 ? 'bg-warning text-dark' : 'bg-success';
+          const ttBadge = /vi phạm/i.test(a.trangThai || '') ? 'bg-danger'
+                        : /ngừng/i.test(a.trangThai || '') ? 'bg-secondary' : 'bg-success';
+          const actions = isManagerPlus
+            ? `<button class="btn btn-sm btn-outline-primary" onclick="openEdit(${i})" title="Thiết lập lịch & tài khoản"><i class="bi bi-gear"></i></button>`
+            : '';
+          return `<tr>
+            <td class="ps-4 fw-bold">${a.maSoDN || ''}</td>
+            <td>${a.tenDN || ''}</td>
+            <td>${a.email || '<span class="text-danger small">Chưa có email!</span>'}</td>
+            <td>${a.chuKy || '<span class="text-muted small">Chưa đặt</span>'}</td>
+            <td>${a.hanNop || '—'}</td>
+            <td>${a.baoCaoGanNhat || '—'}</td>
+            <td class="text-center"><span class="badge ${vpBadge}">${soVP}/3</span></td>
+            <td><span class="badge ${ttBadge}">${a.trangThai || 'Hoạt động'}</span></td>
+            <td class="text-end pe-4">${actions}</td>
+          </tr>`;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-4">Lỗi: ' + err.message + '</td></tr>';
+      }
+    }
+
+    async function loadReports() {
+      const tbody = document.getElementById('reportTableBody');
+      try {
+        reports = await API.list('baocaotvgs', false) || [];
+        reports.sort((a, b) => String(b.ngay || '').localeCompare(String(a.ngay || '')));
+        renderReports();
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Lỗi: ' + err.message + '</td></tr>';
+      }
+    }
+
+    function renderReports() {
+      const tbody = document.getElementById('reportTableBody');
+      const kw = (document.getElementById('reportSearch').value || '').toLowerCase();
+      const filtered = reports.filter(r =>
+        !kw || [r.tenDN, r.maHD, r.hangMuc, r.maBC, r.viPham].some(v => String(v || '').toLowerCase().includes(kw))
+      );
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Không có báo cáo nào</td></tr>';
+        return;
+      }
+      tbody.innerHTML = filtered.map(r => {
+        const badge = /không/i.test(r.danhGia || '') ? 'bg-danger'
+                    : /điều kiện/i.test(r.danhGia || '') ? 'bg-warning text-dark' : 'bg-success';
+        return `<tr>
+          <td class="ps-4 fw-bold">${r.maBC || ''}</td>
+          <td>${r.ngay || ''}</td>
+          <td>${r.tenDN || ''}</td>
+          <td>${r.maHD || ''}</td>
+          <td>${r.hangMuc || ''}</td>
+          <td><span class="badge ${badge}">${r.danhGia || ''}</span></td>
+          <td>${r.viPham || '—'}</td>
+          <td>${r.kienNghi || '—'}</td>
+        </tr>`;
+      }).join('');
+    }
+    document.getElementById('reportSearch').addEventListener('input', renderReports);
+    document.getElementById('btnReloadReports').addEventListener('click', loadReports);
+
+    // ─── SỬA TÀI KHOẢN / THIẾT LẬP LỊCH (Quản lý trở lên) ───
+    window.openEdit = function(idx) {
+      if (!isManagerPlus) return;
+      const a = accounts[idx];
+      document.getElementById('ea-maSoDN').value = a.maSoDN || '';
+      document.getElementById('ea-tenDN').value = a.tenDN || '';
+      document.getElementById('ea-email').value = a.email || '';
+      document.getElementById('ea-chuKy').value = a.chuKy || '';
+      renderHanNopOptions(a.chuKy || '', a.hanNop || '');
+      document.getElementById('ea-trangThai').value = a.trangThai || 'Hoạt động';
+      document.getElementById('ea-ghiChu').value = a.ghiChu || '';
+      document.getElementById('ea-resetViPham').checked = false;
+      document.getElementById('ea-resetPassword').checked = false;
+      document.getElementById('editMsg').textContent = '';
+      if (!editModal) editModal = new bootstrap.Modal(document.getElementById('editAccountModal'));
+      editModal.show();
+    };
+
+    document.getElementById('editAccountForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('editMsg');
+      const btn = document.getElementById('btnSaveAccount');
+      const maSoDN = document.getElementById('ea-maSoDN').value;
+      const chuKy = document.getElementById('ea-chuKy').value;
+      const data = {
+        email: document.getElementById('ea-email').value.trim(),
+        chuKy: chuKy,
+        hanNop: chuKy === 'Hàng tuần' || chuKy === 'Hàng tháng' ? document.getElementById('ea-hanNop').value : '',
+        trangThai: document.getElementById('ea-trangThai').value,
+        ghiChu: document.getElementById('ea-ghiChu').value.trim()
+      };
+      if (document.getElementById('ea-resetViPham').checked) {
+        data.soViPham = 0;
+        data.canhBaoGanNhat = '';
+      }
+      if (document.getElementById('ea-resetPassword').checked) {
+        data.password = 'Nhathau123';
+      }
+      btn.disabled = true;
+      msg.textContent = 'Đang lưu...';
+      msg.className = 'ms-2 small text-muted';
+      try {
+        await API.update('tvgs', maSoDN, data);
+        msg.textContent = '✅ Đã lưu!';
+        msg.className = 'ms-2 small text-success';
+        setTimeout(() => { editModal.hide(); loadAccounts(); }, 800);
+      } catch (err) {
+        msg.textContent = '❌ ' + err.message;
+        msg.className = 'ms-2 small text-danger';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ─── ĐỒNG BỘ TỪ HỢP ĐỒNG ───
+    document.getElementById('btnSync').addEventListener('click', async () => {
+      const btn = document.getElementById('btnSync');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Đang đồng bộ...';
+      try {
+        const res = await API.tvgsSync();
+        alert('Đồng bộ xong!\nTìm thấy ' + (res.total || 0) + ' nhà thầu TVGS trong Hợp đồng.\nTạo mới ' + (res.added || 0) + ' tài khoản (mật khẩu mặc định: Nhathau123).' + (res.message ? '\n' + res.message : ''));
+        loadAccounts();
+      } catch (err) {
+        alert('Lỗi đồng bộ: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Đồng bộ từ Hợp đồng';
+      }
+    });
+
+    // ─── KIỂM TRA TRỄ HẠN NGAY ───
+    document.getElementById('btnCheckNow').addEventListener('click', async () => {
+      const btn = document.getElementById('btnCheckNow');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Đang kiểm tra...';
+      try {
+        const res = await API.tvgsCheckNow();
+        alert('Kiểm tra xong!\nĐã kiểm tra: ' + (res.checked || 0) + ' tài khoản có lịch báo cáo.\nVi phạm mới phát hiện: ' + (res.violations || 0) + ' (đã gửi email cảnh báo).');
+        loadAccounts();
+      } catch (err) {
+        alert('Lỗi kiểm tra: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-alarm"></i> Kiểm tra trễ hạn';
+      }
+    });
+
+    // ─── KHỞI TẠO ───
+    loadAccounts();
+    loadReports();
+  </script>
+</body>
+</html>
