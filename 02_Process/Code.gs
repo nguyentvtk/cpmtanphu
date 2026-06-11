@@ -35,7 +35,11 @@ const SHEET_ALIAS = {
   "qtchiphi":   "QT Chi phí",
   "qtvanban":   "QT Văn bản",
   "qttaisan":   "QT Tài sản",
-  "qtcongno":   "QT Công nợ"
+  "qtcongno":   "QT Công nợ",
+  // ── Module Site360 ──
+  "pano360":    "360",
+  "360stats":   "360",
+  "360map":     "360"
 };
 
 /**
@@ -359,6 +363,16 @@ function doPost(e) {
 
     if (action === 'login_tvgs') {
       return responseSuccess(AuthService.loginTVGS(body.identifier, body.password));
+    }
+
+    if (action === 'login_360') {
+      return responseSuccess(AuthService.login360(body.email, body.password));
+    }
+
+    if (action === 'logout_360') {
+      var propKey = 'sess360_' + (body.token || '');
+      PropertiesService.getScriptProperties().deleteProperty(propKey);
+      return responseSuccess(null, 'Đăng xuất thành công');
     }
 
     if (action === 'tvgs_sync') {
@@ -2348,3 +2362,66 @@ function uninstallTVGSTrigger() {
   });
   Logger.log('Đã gỡ ' + removed + ' trigger(s) TVGS');
 }
+
+// ─── AUTH360: Đăng nhập đơn giản cho module Site360 ──────────────────────────
+// Không yêu cầu hợp đồng — chỉ cần email + mật khẩu từ sheet Nhà thầu TVGS
+AuthService.login360 = function(email, password) {
+  if (!email || !password) throw new Error('Vui lòng nhập đầy đủ email và mật khẩu');
+  
+  var emailLower = String(email).toLowerCase().trim();
+  var sh = SS.getSheetByName('Nhà thầu TVGS');
+  if (!sh) throw new Error('Không tìm thấy sheet Nhà thầu TVGS');
+  
+  var rows = sh.getDataRange().getValues();
+  var headers = rows[0];
+  
+  // Tìm index các cột cần thiết
+  var colEmail = headers.indexOf('Email');
+  var colPass  = headers.indexOf('Mật khẩu');
+  var colTen   = headers.indexOf('Tên doanh nghiệp');
+  var colMaSo  = headers.indexOf('Mã số doanh nghiệp');
+  var colTT    = headers.indexOf('Trạng thái');
+  var colVaiTro = headers.indexOf('Vai Trò 360°');
+  var colDuAn   = headers.indexOf('Dự Án 360°');
+  if (colEmail < 0) throw new Error('Không tìm thấy cột Email trong sheet Nhà thầu TVGS');
+  
+  var found = null;
+  for (var i = 1; i < rows.length; i++) {
+    var rowEmail = String(rows[i][colEmail] || '').toLowerCase().trim();
+    if (rowEmail === emailLower) { found = { row: rows[i], rowIndex: i + 1 }; break; }
+  }
+  if (!found) throw new Error('Email không tồn tại trong hệ thống');
+  
+  var row = found.row;
+  
+  // Kiểm tra trạng thái
+  var tt = String(row[colTT] || '').toLowerCase();
+  if (tt === 'khóa' || tt === 'khoa' || tt === 'blocked') {
+    throw new Error('Tài khoản đã bị khóa. Liên hệ quản trị viên.');
+  }
+  
+  // So sánh mật khẩu
+  var storedPass = String(row[colPass] || '').trim();
+  if (storedPass !== password.trim()) throw new Error('Mật khẩu không đúng');
+  
+  // Tạo session token 8 giờ
+  var token = Utilities.base64Encode(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+      Date.now() + Math.random().toString(), Utilities.Charset.UTF_8)
+  ).replace(/[^a-zA-Z0-9]/g,'').substring(0,32);
+  
+  var expiresAt = new Date(Date.now() + 8 * 3600 * 1000).toISOString();
+  var duAn360 = colDuAn >= 0 ? String(row[colDuAn] || '').split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
+  var vaiTro  = colVaiTro >= 0 ? (String(row[colVaiTro] || '') || 'Xem') : 'Xem';
+  
+  var session = { email: emailLower, tenDN: row[colTen] || '', maSoDN: row[colMaSo] || '',
+    vaiTro: vaiTro, duAn360: duAn360, expiresAt: expiresAt };
+  PropertiesService.getScriptProperties().setProperty('sess360_' + token, JSON.stringify(session));
+  
+  // Cập nhật lần đăng nhập cuối (nếu có cột)
+  var colCuoi = headers.indexOf('Đăng Nhập 360° Cuối');
+  if (colCuoi >= 0) sh.getRange(found.rowIndex, colCuoi + 1).setValue(new Date());
+  
+  return { token: token, email: emailLower, tenDN: session.tenDN, maSoDN: session.maSoDN,
+    vaiTro: vaiTro, duAn360: duAn360, expiresAt: expiresAt };
+};
