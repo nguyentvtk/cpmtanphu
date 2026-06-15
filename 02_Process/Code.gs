@@ -292,11 +292,18 @@ function resolveSheetName(input) {
 function doGet(e) {
   var page = (e && e.parameter && e.parameter.page) || 'login';
   var token = (e && e.parameter && e.parameter.token) || '';
+  var embed = (e && e.parameter && e.parameter.embed) || '0';
   if (page === 'dashboard') page = 'index';
   
   try {
     var template = HtmlService.createTemplateFromFile(page);
     template.authToken = token;
+    template.isEmbedded = embed;
+    try {
+      template.userEmail = Session.getActiveUser().getEmail();
+    } catch(err) {
+      template.userEmail = '';
+    }
     return template.evaluate()
       .setTitle("CPM 5.0 — Hệ thống Quản lý Dự án")
       .addMetaTag("viewport", "width=device-width, initial-scale=1")
@@ -306,6 +313,8 @@ function doGet(e) {
     try {
       var template = HtmlService.createTemplateFromFile('login');
       template.authToken = '';
+      template.isEmbedded = embed;
+      try { template.userEmail = Session.getActiveUser().getEmail(); } catch(err) { template.userEmail = ''; }
       return template.evaluate()
         .setTitle("Đăng nhập — CPM 5.0")
         .addMetaTag("viewport", "width=device-width, initial-scale=1")
