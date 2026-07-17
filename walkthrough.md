@@ -84,7 +84,7 @@ Với **Cách 2**, toàn bộ giao diện (Frontend) và bộ xử lý dữ li�
 ## 🧪 KẾT QUẢ ĐẠT ĐƯỢC
 Sau khi hoàn tất 3 bước trên, bạn chỉ cần **mở trực tiếp URL Web App** vừa copy trên bất kỳ trình duyệt nào (Máy tính hoặc Điện thoại):
 * [x] **Trang Đăng nhập (login)** sẽ hiển thị đầu tiên vô cùng đẹp mắt.
-* [x] Sau khi nhập tài khoản (`admin@cpm.vn` / `123456`), hệ thống sẽ chuyển hướng mượt mà sang **Dashboard Tổng quan**.
+* [x] Đăng nhập bằng **Email** và **Mật khẩu** của một tài khoản có thật trong sheet `Nhân sự` (không dùng tài khoản mẫu `admin@cpm.vn`/`123456` — tài khoản này không tồn tại trong hệ thống). Ví dụ tài khoản quản trị: email `nguyentvtk@gmail.com`, mật khẩu lấy đúng theo cột **Mật khẩu** của dòng tương ứng trong sheet `Nhân sự`. Sau khi đăng nhập, hệ thống sẽ chuyển hướng mượt mà sang **Dashboard Tổng quan**.
 * [x] Menu Sidebar bên trái hoạt động hoàn hảo, cho phép bạn chuyển đổi giữa các module: Dự án, Nhiệm vụ Kanban, Hợp đồng, Gantt Chart một cách tức thời mà không lo bị mất tham số hay lỗi đường truyền!
 * [x] **Nâng cấp Sơ đồ Gantt (Gantt Chart)**:
   * **Tự động giãn khít cột ngày**: Ở chế độ xem "Ngày", cột ngày tự động tính toán chiều rộng thích ứng hoàn hảo với không gian trống, hiển thị đủ số ngày trong tháng mà không có thanh cuộn ngang khi co giãn sidebar bên trái.
