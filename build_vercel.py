@@ -14,6 +14,20 @@ if os.path.exists(DIST_DIR):
 shutil.copytree(SRC_DIR, DIST_DIR)
 print(f"Da sao chep 03_Outputs sang {DIST_DIR}")
 
+# 1b. Dam bao vercel.json (cau hinh routing Vercel) luon ton tai trong ban build.
+# rmtree o tren xoa het dist_vercel nen file nay bi mat neu 03_Outputs khong co.
+# Uu tien copy tu 03_Outputs neu co, neu khong thi ghi cau hinh mac dinh.
+VERCEL_JSON = os.path.join(DIST_DIR, "vercel.json")
+SRC_VERCEL_JSON = os.path.join(SRC_DIR, "vercel.json")
+if not os.path.exists(VERCEL_JSON):
+    if os.path.exists(SRC_VERCEL_JSON):
+        shutil.copyfile(SRC_VERCEL_JSON, VERCEL_JSON)
+        print("Da khoi phuc vercel.json tu 03_Outputs")
+    else:
+        with open(VERCEL_JSON, "w", encoding="utf-8") as f:
+            f.write('{\n  "cleanUrls": true\n}\n')
+        print("Da tao vercel.json mac dinh (cleanUrls)")
+
 # 2. Doc noi dung file api.html de nhung (inline)
 api_path = os.path.join(DIST_DIR, "pages", "api.html")
 if not os.path.exists(api_path):
