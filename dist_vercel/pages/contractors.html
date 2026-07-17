@@ -689,6 +689,39 @@ window.Auth = {
     }
     
   </style>
+  <script>
+    window.IS_EMBEDDED = "<?= typeof isEmbedded !== 'undefined' ? isEmbedded : '0' ?>";
+    window.USER_EMAIL = "<?= typeof userEmail !== 'undefined' ? userEmail : '' ?>";
+    if (window.IS_EMBEDDED.indexOf("<" + "?=") === 0) window.IS_EMBEDDED = "0";
+    if (window.USER_EMAIL.indexOf("<" + "?=") === 0) window.USER_EMAIL = "";
+    
+    // Bypass login if native Google Auth provides email
+    if (window.USER_EMAIL) {
+      try {
+        localStorage.setItem('userProfile', JSON.stringify({ email: window.USER_EMAIL, role: 'Nội bộ', name: window.USER_EMAIL }));
+      } catch(e) {}
+    }
+    
+    document.addEventListener("DOMContentLoaded", function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const isEmbed = window.IS_EMBEDDED === '1' || urlParams.get('embed') === '1';
+      
+      if (isEmbed) {
+        document.body.classList.add('is-embedded');
+      }
+    });
+  </script>
+  <style>
+    body.is-embedded #sidebar { display: none !important; }
+    body.is-embedded .main-content { 
+      margin-left: 0 !important; 
+      width: 100% !important; 
+      padding: 10px !important; 
+      margin-top: 0 !important;
+    }
+    body.is-embedded header, body.is-embedded .topbar { display: none !important; }
+    body.is-embedded #sidebarCollapse, body.is-embedded #sidebarCollapseMobile { display: none !important; }
+  </style>
 </head>
 <body>
 

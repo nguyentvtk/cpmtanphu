@@ -16,6 +16,8 @@
   <script>
     window.IS_EMBEDDED = "<?= typeof isEmbedded !== 'undefined' ? isEmbedded : '0' ?>";
     window.USER_EMAIL = "<?= typeof userEmail !== 'undefined' ? userEmail : '' ?>";
+    if (window.IS_EMBEDDED.indexOf("<" + "?=") === 0) window.IS_EMBEDDED = "0";
+    if (window.USER_EMAIL.indexOf("<" + "?=") === 0) window.USER_EMAIL = "";
     
     // Bypass login if native Google Auth provides email
     if (window.USER_EMAIL) {
