@@ -1349,10 +1349,11 @@ window.Auth = {
         return;
       }
 
-      // Tìm thông tin cũ để giữ nguyên mật khẩu cũ nếu mật khẩu mới trống
-      const originalEmp = employeesData.find(e => e.maNV === data.maNV);
-      if (!data.password && originalEmp) {
-        data.password = originalEmp.password;
+      // Nếu không nhập mật khẩu mới thì KHÔNG gửi trường password lên server;
+      // backend sẽ tự giữ nguyên mật khẩu hiện có. (API không còn trả mật khẩu cũ
+      // về client vì lý do bảo mật.)
+      if (!data.password) {
+        delete data.password;
       }
 
       try {

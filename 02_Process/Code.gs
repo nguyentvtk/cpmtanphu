@@ -422,11 +422,11 @@ function doPost(e) {
           try {
             var cachedBatch = cacheGet_(resolved);
             if (cachedBatch) {
-              result[rawSheetName] = cachedBatch;
+              result[rawSheetName] = stripSensitive_(resolved, cachedBatch);
             } else {
               var batchData = new CRUDService(resolved, true).list();
               cachePut_(resolved, batchData);
-              result[rawSheetName] = batchData;
+              result[rawSheetName] = stripSensitive_(resolved, batchData);
             }
           } catch (eSheet) {
             Logger.log("Lỗi tải sheet " + rawSheetName + ": " + eSheet.message);
@@ -455,13 +455,13 @@ function doPost(e) {
     // Đường đọc nhanh: dùng cache server + CRUDService chế độ chỉ đọc
     if (action === 'list') {
       var cachedList = cacheGet_(sheetName);
-      if (cachedList) return responseSuccess(cachedList);
+      if (cachedList) return responseSuccess(stripSensitive_(sheetName, cachedList));
       var listData = new CRUDService(sheetName, true).list();
       cachePut_(sheetName, listData);
-      return responseSuccess(listData);
+      return responseSuccess(stripSensitive_(sheetName, listData));
     }
     if (action === 'get') {
-      return responseSuccess(new CRUDService(sheetName, true).get(id));
+      return responseSuccess(stripSensitive_(sheetName, new CRUDService(sheetName, true).get(id)));
     }
 
     var crud = new CRUDService(sheetName);
@@ -878,12 +878,20 @@ class CRUDService {
     var sheet = this.sheet;
     
     var targetIdStr = String(id).trim();
+    var sheetName = this.sheetName;
     for (var i = 1; i < allData.length; i++) {
       if (String(allData[i][0]).trim() === targetIdStr) {
         headers.forEach(function(h, j) {
           var cleanH = String(h).trim();
           var key = map[cleanH] || cleanH;
           if (j === 0 && (id === "#REF!" || id === "")) return;
+          // Bảo mật: với sheet chứa mật khẩu, nếu client gửi password rỗng
+          // (do API không còn trả mật khẩu cũ) thì GIỮ NGUYÊN mật khẩu hiện có,
+          // không ghi đè thành chuỗi rỗng.
+          if (key === "password" && SENSITIVE_SHEETS[sheetName] &&
+              (data[key] === undefined || String(data[key]).trim() === "")) {
+            return;
+          }
           if (data[key] !== undefined) {
             var cell = sheet.getRange(i + 1, j + 1);
             cell.setValue(data[key]);
@@ -1033,6 +1041,31 @@ var AuthService = (function() {
 })();
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+// ─── BẢO MẬT: ẩn cột mật khẩu khỏi mọi phản hồi đọc (list/get/batch_list) ──────
+// Các sheet chứa mật khẩu (Nhân sự, Nhà thầu TVGS) map cột "Mật khẩu" -> key "password".
+// Đăng nhập (login/loginTVGS) đọc sheet trực tiếp nên KHÔNG bị ảnh hưởng bởi hàm này.
+var SENSITIVE_SHEETS = { "Nhân sự": true, "Nhà thầu TVGS": true };
+
+function stripSensitive_(sheetName, data) {
+  if (!SENSITIVE_SHEETS[sheetName] || !data) return data;
+  if (Array.isArray(data)) {
+    return data.map(function(row) {
+      if (row && typeof row === 'object' && 'password' in row) {
+        var copy = {};
+        for (var k in row) { if (k !== 'password') copy[k] = row[k]; }
+        return copy;
+      }
+      return row;
+    });
+  }
+  if (typeof data === 'object' && 'password' in data) {
+    var copy = {};
+    for (var k in data) { if (k !== 'password') copy[k] = data[k]; }
+    return copy;
+  }
+  return data;
+}
 
 function responseSuccess(data, message) {
   message = message || "Thành công";
