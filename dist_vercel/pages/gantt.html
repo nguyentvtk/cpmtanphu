@@ -1018,6 +1018,9 @@
             <i class="bi bi-calendar3 me-1"></i> Quý
           </button>
         </div>
+        <button class="btn btn-sm btn-primary fw-semibold ms-2 shadow-sm px-3 py-2" id="btnGanttAnalysis" onclick="openGanttAnalysis()" title="Phân tích tiến độ và giá trị thực hiện các công tác">
+          <i class="bi bi-graph-up-arrow me-1"></i> Phân tích tiến độ
+        </button>
       </div>
 
       <!-- Gantt Workspace Area -->
@@ -1247,6 +1250,28 @@
     </div>
   </div>
 
+  <!-- Modal Phân tích tiến độ & giá trị thực hiện -->
+  <div class="modal fade" id="ganttAnalysisModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title fw-bold"><i class="bi bi-graph-up-arrow me-2"></i>Phân tích tiến độ &amp; giá trị thực hiện</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body bg-light" id="gaBody">
+          <div class="text-center py-5 text-muted">
+            <div class="spinner-border text-primary mb-2"></div>
+            <div>Đang tải dữ liệu báo cáo…</div>
+          </div>
+        </div>
+        <div class="modal-footer border-0 small text-muted d-block">
+          <div><b>Cách tính:</b> Tiến độ kế hoạch (KH) = thời gian đã trôi qua / tổng thời gian công tác. Tiến độ thực hiện (TH) lấy từ <b>Báo cáo ngày</b> (ưu tiên báo cáo gắn đúng Mã công tác, sau đó khớp tên hạng mục), hoặc trạng thái "Hoàn thành" trên Gantt. Giá trị thực hiện (EV) = Giá trị công tác × TH%.</div>
+          <div class="mt-1"><b>💡 Để số liệu chính xác:</b> khi nộp Báo cáo ngày, cán bộ QLDA hãy chọn đúng <b>Công tác Gantt</b> và nhập <b>% lũy kế hoàn thành</b> của công tác đó.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
 
@@ -1306,6 +1331,13 @@ window.API_URL = window.SCRIPT_URL;
 window.CACHE_DURATION = 60000; // 60 giây
 
 async function apiPost(body) {
+  // Đính kèm người thao tác (phục vụ thông báo Telegram cho Quản lý)
+  try {
+    if (!body._actor) {
+      const _p = JSON.parse(localStorage.getItem('userProfile') || 'null');
+      if (_p) body._actor = { hoTen: _p.hoTen || _p.tenDN || _p.name || '', maNV: _p.maNV || '', email: _p.email || '' };
+    }
+  } catch(e) {}
   const res = await fetch(API_URL, {
     method: 'POST',
     redirect: 'follow',
@@ -2825,6 +2857,206 @@ window.Auth = {
       const tooltip = document.getElementById('ganttGlobalTooltip');
       if (tooltip) tooltip.style.display = 'none';
     };
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PHÂN TÍCH TIẾN ĐỘ & GIÁ TRỊ THỰC HIỆN
+    // Cùng logic phân loại với buildGanttDigestText_ trong Code.gs (Telegram)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function gaNorm(s) {
+      return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
+    }
+
+    // Phân loại 1 công tác: done|ahead|ontrack|atrisk|late|nodata|future
+    function gaClassifyTask(t, reports, now) {
+      const start = parseDateStr(t.ngayBatDau);
+      const end = parseDateStr(t.ngayKetThuc);
+      if (!start || !end || end < start) return { status: 'nodata', planned: null, actual: null, source: 'Thiếu ngày' };
+
+      let planned;
+      if (now < start) planned = 0;
+      else if (now >= end) planned = 100;
+      else planned = Math.round(((now - start) / (end - start)) * 100);
+
+      let actual = null, source = '';
+      let best = null, bestDate = null;
+      const tMaCT = String(t.maCT || '').trim();
+      const tNameNorm = gaNorm(t.tenCT);
+      for (const r of reports) {
+        if (String(r.maDA || '').trim() !== String(t.maDA || '').trim()) continue;
+        const pct = parseFloat(r.progressPercent);
+        if (isNaN(pct)) continue;
+        let match = false, viaCT = false;
+        if (tMaCT && String(r.maCT || '').trim() === tMaCT) { match = true; viaCT = true; }
+        else if (tNameNorm) {
+          const wNorm = gaNorm(r.workItem);
+          if (wNorm && (wNorm.includes(tNameNorm) || tNameNorm.includes(wNorm))) match = true;
+        }
+        if (!match) continue;
+        const rd = parseDateStr(r.date) || new Date(0);
+        const tier = viaCT ? 2 : 1;
+        if (!best || tier > best.tier || (tier === best.tier && rd > bestDate)) {
+          best = { pct, tier };
+          bestDate = rd;
+        }
+      }
+      if (best) {
+        actual = Math.max(0, Math.min(100, best.pct));
+        source = best.tier === 2 ? 'BC ngày (mã công tác)' : 'BC ngày (khớp tên)';
+      } else if (/hoan thanh|xong|100/.test(gaNorm(t.trangThai))) {
+        actual = 100;
+        source = 'Trạng thái Gantt';
+      }
+
+      if (now < start) return { status: 'future', planned: 0, actual, source: source || '—' };
+      if (actual === null) return { status: 'nodata', planned, actual: null, source: '—' };
+      if (actual >= 100) return { status: 'done', planned, actual: 100, source };
+
+      const delta = actual - planned;
+      const daysLeft = Math.ceil((end - now) / 86400000);
+      let status;
+      if (now >= end || delta < -15) status = 'late';
+      else if (delta < -5 || (daysLeft <= 7 && delta < 0)) status = 'atrisk';
+      else if (delta <= 5) status = 'ontrack';
+      else status = 'ahead';
+      return { status, planned, actual, source };
+    }
+
+    const GA_STATUS_META = {
+      ahead:   { label: 'Vượt tiến độ',   badge: 'bg-info text-dark',              icon: '🚀' },
+      ontrack: { label: 'Đúng tiến độ',   badge: 'bg-success-subtle text-success border border-success-subtle', icon: '✅' },
+      atrisk:  { label: 'Nguy cơ trễ',    badge: 'bg-warning text-dark',           icon: '⚠️' },
+      late:    { label: 'Trễ tiến độ',    badge: 'bg-danger',                      icon: '🔴' },
+      done:    { label: 'Hoàn thành',     badge: 'bg-success',                     icon: '🏁' },
+      future:  { label: 'Chưa tới hạn',   badge: 'bg-light text-muted border',     icon: '⏳' },
+      nodata:  { label: 'Chưa có số liệu', badge: 'bg-secondary-subtle text-secondary border', icon: '❔' }
+    };
+
+    let gaReports = null, gaTVGS = null;
+
+    window.openGanttAnalysis = async function() {
+      const modal = new bootstrap.Modal(document.getElementById('ganttAnalysisModal'));
+      modal.show();
+      try {
+        const batch = await API.batchList(['baocao', 'baocaotvgs'], false);
+        gaReports = batch.baocao || [];
+        gaTVGS = batch.baocaotvgs || [];
+      } catch (e) {
+        gaReports = gaReports || [];
+        gaTVGS = gaTVGS || [];
+      }
+      renderGanttAnalysis();
+    };
+
+    function gaFmtDate(s) {
+      const d = parseDateStr(s);
+      if (!d) return '—';
+      return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+    }
+
+    function renderGanttAnalysis() {
+      const now = new Date();
+      const body = document.getElementById('gaBody');
+      const tasks = ganttTasks.filter(t => String(t.tenCT || '').trim());
+      if (!tasks.length) {
+        body.innerHTML = '<div class="text-center text-muted py-5">Chưa có công tác nào trên sơ đồ Gantt.</div>';
+        return;
+      }
+
+      const counts = { ahead: 0, ontrack: 0, atrisk: 0, late: 0, done: 0, future: 0, nodata: 0 };
+      let pvSum = 0, evSum = 0;
+      const byProject = {};
+
+      tasks.forEach(t => {
+        const c = gaClassifyTask(t, gaReports || [], now);
+        counts[c.status]++;
+        const gia = parseFloat(t.giaTriCT) || 0;
+        const pv = c.planned !== null ? gia * c.planned / 100 : 0;
+        const ev = c.actual !== null ? gia * c.actual / 100 : 0;
+        pvSum += pv; evSum += ev;
+        const key = String(t.maDA || '').trim() || '(Không mã DA)';
+        if (!byProject[key]) byProject[key] = { tasks: [], pv: 0, ev: 0 };
+        byProject[key].tasks.push({ t, c, gia, pv, ev });
+        byProject[key].pv += pv; byProject[key].ev += ev;
+      });
+
+      // ── Thẻ tổng hợp ──
+      const chip = (st) => {
+        const m = GA_STATUS_META[st];
+        return `<div class="col"><div class="card border-0 shadow-sm text-center py-2 px-1 h-100">
+          <div style="font-size:1.3rem;">${m.icon}</div>
+          <div class="h4 fw-bold mb-0">${counts[st]}</div>
+          <div class="small text-muted">${m.label}</div></div></div>`;
+      };
+      let html = `<div class="row row-cols-4 row-cols-md-7 g-2 mb-3">${['ahead','ontrack','atrisk','late','done','future','nodata'].map(chip).join('')}</div>`;
+
+      const sv = evSum - pvSum;
+      html += `<div class="card border-0 shadow-sm mb-3"><div class="card-body py-2 d-flex flex-wrap gap-4 justify-content-center small">
+        <span>💵 <b>Giá trị KH đến nay (PV):</b> <span class="text-primary fw-bold">${formatCurrencyVN(pvSum)}</span></span>
+        <span>💰 <b>Giá trị thực hiện (EV):</b> <span class="text-success fw-bold">${formatCurrencyVN(evSum)}</span></span>
+        <span>📊 <b>Chênh lệch (SV):</b> <span class="fw-bold ${sv >= 0 ? 'text-success' : 'text-danger'}">${sv >= 0 ? '+' : ''}${formatCurrencyVN(sv)}</span></span>
+      </div></div>`;
+
+      // ── Chi tiết theo dự án ──
+      const projName = (maDA) => {
+        const p = projects.find(x => String(x.maDA).trim() === maDA);
+        return p ? p.tenDA : '';
+      };
+      // Dự án có công tác trễ/nguy cơ đưa lên đầu
+      const projOrder = Object.keys(byProject).sort((a, b) => {
+        const w = (g) => g.tasks.reduce((s, x) => s + (x.c.status === 'late' ? 2 : x.c.status === 'atrisk' ? 1 : 0), 0);
+        return w(byProject[b]) - w(byProject[a]);
+      });
+
+      projOrder.forEach(maDA => {
+        const g = byProject[maDA];
+        const rows = g.tasks.map(({ t, c, gia }) => {
+          const m = GA_STATUS_META[c.status];
+          const deltaTxt = (c.planned !== null && c.actual !== null)
+            ? `<span class="${c.actual - c.planned < 0 ? 'text-danger' : 'text-success'}">${c.actual - c.planned >= 0 ? '+' : ''}${c.actual - c.planned}%</span>`
+            : '—';
+          return `<tr>
+            <td class="small">${t.tenCT || ''}</td>
+            <td class="small text-nowrap text-center">${gaFmtDate(t.ngayBatDau)} → ${gaFmtDate(t.ngayKetThuc)}</td>
+            <td class="small text-end">${gia ? formatCurrencyVN(gia) : '—'}</td>
+            <td class="text-center small">${c.planned !== null ? c.planned + '%' : '—'}</td>
+            <td class="text-center small fw-bold">${c.actual !== null ? c.actual + '%' : '—'}</td>
+            <td class="text-center small">${deltaTxt}</td>
+            <td class="text-center"><span class="badge ${m.badge}">${m.icon} ${m.label}</span></td>
+            <td class="small text-muted">${c.source}</td>
+          </tr>`;
+        }).join('');
+
+        // Ghi nhận TVGS gần nhất của dự án (nếu có)
+        let tvgsNote = '';
+        const tvgsOfProj = (gaTVGS || []).filter(r => String(r.maDA || '').trim() === maDA);
+        if (tvgsOfProj.length) {
+          tvgsOfProj.sort((a, b) => (parseDateStr(b.ngay) || 0) - (parseDateStr(a.ngay) || 0));
+          const last = tvgsOfProj[0];
+          const vp = String(last.viPham || '').trim();
+          tvgsNote = `<div class="small px-3 pb-2 text-muted">🔍 <b>TVGS gần nhất</b> (${gaFmtDate(last.ngay)} — ${last.tenDN || ''}): ${last.danhGia || '—'}${vp && !/không/i.test(vp) ? ` • <span class="text-danger">Vi phạm: ${vp}</span>` : ''}</div>`;
+        }
+
+        html += `<div class="card border-0 shadow-sm mb-3">
+          <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold font-monospace">${maDA}</span>
+            <b class="small">${projName(maDA)}</b>
+            <span class="ms-auto small text-muted">EV/PV: <b class="${g.ev >= g.pv ? 'text-success' : 'text-danger'}">${formatCurrencyVN(g.ev)}</b> / ${formatCurrencyVN(g.pv)}</span>
+          </div>
+          <div class="table-responsive"><table class="table table-sm table-hover mb-1 align-middle">
+            <thead><tr class="small text-muted">
+              <th>Công tác</th><th class="text-center">Thời gian</th><th class="text-end">Giá trị</th>
+              <th class="text-center">KH %</th><th class="text-center">TH %</th><th class="text-center">Chênh</th>
+              <th class="text-center">Trạng thái</th><th>Nguồn số liệu</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+          ${tvgsNote}
+        </div>`;
+      });
+
+      body.innerHTML = html;
+    }
 
   </script>
   <!-- Global tooltip container -->

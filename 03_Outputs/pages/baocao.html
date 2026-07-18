@@ -489,6 +489,13 @@
           <label class="form-label small fw-bold">Hạng mục thi công <span class="text-danger">*</span></label>
           <input type="text" class="form-control" id="rp-hangMuc" placeholder="VD: Đắp sỏi đỏ nền đường, lu lèn K98..." required>
         </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-bold">Công tác Gantt <span class="text-muted fw-normal">(khuyến nghị chọn)</span></label>
+          <select class="form-select" id="rp-maCT" disabled>
+            <option value="">— Không gắn công tác cụ thể —</option>
+          </select>
+          <div class="form-text small">Gắn đúng công tác để hệ thống phân tích tiến độ &amp; giá trị thực hiện tự động. Khi đó, "Tiến độ (%)" là <b>% lũy kế hoàn thành của công tác</b> này.</div>
+        </div>
         <div class="col-md-2">
           <label class="form-label small fw-bold">Số công nhân</label>
           <input type="number" class="form-control" id="rp-congNhan" min="0" placeholder="0">
@@ -602,25 +609,42 @@
     // ─── TẢI DỮ LIỆU ───
     async function init() {
       try {
-        const data = API.batchList ? await API.batchList(['duan', 'nhansu']) : null;
+        const data = API.batchList ? await API.batchList(['duan', 'nhansu', 'gantt']) : null;
         if (data) {
           projects = data['duan'] || [];
           staffList = data['nhansu'] || [];
+          ganttList = data['gantt'] || [];
         } else {
           projects = await API.list('duan');
           staffList = await API.list('nhansu');
+          ganttList = await API.list('gantt').catch(() => []);
         }
       } catch (e) {
         try {
           projects = await API.list('duan');
           staffList = await API.list('nhansu');
-        } catch (e2) { projects = []; staffList = []; }
+          ganttList = await API.list('gantt').catch(() => []);
+        } catch (e2) { projects = []; staffList = []; ganttList = []; }
       }
       const sel = document.getElementById('rp-maDA');
       sel.innerHTML = projects.length
         ? projects.map(p => `<option value="${p.maDA}" data-ten="${(p.tenDA || '').replace(/"/g, '&quot;')}">${p.maDA} — ${p.tenDA}</option>`).join('')
         : '<option value="">(Chưa có dự án)</option>';
+      populateGanttTasks();
+      sel.addEventListener('change', populateGanttTasks);
       loadReports();
+    }
+
+    // Nạp danh sách công tác Gantt của dự án đang chọn vào dropdown rp-maCT
+    let ganttList = [];
+    function populateGanttTasks() {
+      const selCT = document.getElementById('rp-maCT');
+      if (!selCT) return;
+      const maDA = document.getElementById('rp-maDA').value;
+      const tasks = ganttList.filter(t => String(t.maDA || '').trim() === String(maDA).trim() && String(t.tenCT || '').trim());
+      selCT.innerHTML = '<option value="">— Không gắn công tác cụ thể —</option>' +
+        tasks.map(t => `<option value="${String(t.maCT || '').replace(/"/g, '&quot;')}" data-ten="${String(t.tenCT || '').replace(/"/g, '&quot;')}">${t.tenCT}${t.maCT ? ' (' + t.maCT + ')' : ''}</option>`).join('');
+      selCT.disabled = tasks.length === 0;
     }
 
     async function loadReports() {
@@ -670,6 +694,15 @@
     document.getElementById('reportSearch').addEventListener('input', renderReports);
     document.getElementById('btnReload').addEventListener('click', loadReports);
 
+    // Chọn công tác Gantt → tự điền tên hạng mục nếu đang trống
+    document.getElementById('rp-maCT').addEventListener('change', function() {
+      const opt = this.selectedOptions[0];
+      const hangMuc = document.getElementById('rp-hangMuc');
+      if (opt && opt.value && opt.dataset.ten && !hangMuc.value.trim()) {
+        hangMuc.value = opt.dataset.ten;
+      }
+    });
+
     // ─── NỘP BÁO CÁO ───
     document.getElementById('reportForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -688,6 +721,7 @@
           maDA: opt.value,
           tenDA: opt.dataset.ten || '',
           maNV: myMaNV,
+          maCT: document.getElementById('rp-maCT') ? document.getElementById('rp-maCT').value : '',
           workItem: document.getElementById('rp-hangMuc').value.trim(),
           progressPercent: document.getElementById('rp-tienDo').value,
           disbursementAmount: document.getElementById('rp-giaiNgan').value,

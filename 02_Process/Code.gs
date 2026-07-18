@@ -75,7 +75,10 @@ const SCHEMA_MAP = {
     "Số Lượng Công Nhân": "laborCount",
     "Kiển Định Chất Lượng": "qualityInspection",
     "Ghi Chú": "notes",
+    // Liên kết công tác Gantt (phục vụ phân tích tiến độ thực tế theo công tác)
+    "Mã Công Tác (Gantt)": "maCT",
     // Biến thể header cũ (tương thích ngược)
+    "Mã công tác": "maCT",
     "Mã BC": "id",
     "Ngày": "date",
     "Mã DA": "maDA",
@@ -337,6 +340,12 @@ function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
 
+    // ─── TELEGRAM WEBHOOK: update từ Telegram Bot (nút xác nhận, lệnh /tiendo) ───
+    if (body && body.update_id !== undefined) {
+      try { handleTelegramUpdate_(body); } catch (tgErr) { Logger.log('Telegram update error: ' + tgErr.message); }
+      return responseSuccess({ ok: true });
+    }
+
     // ─── BRIDGE: Tương thích App Báo cáo (BQLDA Tân Phú) ───
     // App gửi payload phẳng KHÔNG có action/sheet: {maBaoCao, ngayBaoCao, maDuAn, ...}
     // => Tự động chuyển đổi key và ghi vào sheet "Báo cáo"
@@ -358,7 +367,9 @@ function doPost(e) {
         qualityInspection: body.kienDinhChatLuong || '',
         notes: body.ghiChu || ''
       };
-      return responseSuccess(crudBC.create(mappedBC), "Đã ghi báo cáo vào sheet Báo cáo");
+      var createdBC = crudBC.create(mappedBC);
+      tgNotifyCrud_('create', "Báo cáo", createdBC, { hoTen: 'App BQLDA (mã NV ' + (mappedBC.maNV || '?') + ')' });
+      return responseSuccess(createdBC, "Đã ghi báo cáo vào sheet Báo cáo");
     }
 
     var action = (body.action || 'list').toLowerCase();
@@ -467,9 +478,21 @@ function doPost(e) {
     var crud = new CRUDService(sheetName);
 
     switch(action) {
-      case 'create': return responseSuccess(crud.create(data), "Tạo mới thành công");
-      case 'update': return responseSuccess(crud.update(id, data), "Cập nhật thành công");
-      case 'delete': return responseSuccess(crud.delete(id), "Xóa thành công");
+      case 'create': {
+        var createdRec = crud.create(data);
+        tgNotifyCrud_('create', sheetName, createdRec, body._actor);
+        return responseSuccess(createdRec, "Tạo mới thành công");
+      }
+      case 'update': {
+        var updatedRes = crud.update(id, data);
+        tgNotifyCrud_('update', sheetName, Object.assign({}, data, { __id: id }), body._actor);
+        return responseSuccess(updatedRes, "Cập nhật thành công");
+      }
+      case 'delete': {
+        var delRes = crud.delete(id);
+        tgNotifyCrud_('delete', sheetName, { __id: id }, body._actor);
+        return responseSuccess(delRes, "Xóa thành công");
+      }
       case 'import': return responseSuccess(crud.importData(body.dataList), "Nhập dữ liệu thành công");
       case 'getNotifications': return responseSuccess(getNotificationsForUser(params.nguoiDung || '', params.choChuaDoc === 'true'));
       case 'countUnread': return responseSuccess({count: countUnreadNotifications(params.nguoiDung || '')});
@@ -2463,7 +2486,305 @@ AuthService.login360 = function(email, password) {
   // Cập nhật lần đăng nhập cuối (nếu có cột)
   var colCuoi = headers.indexOf('Đăng Nhập 360° Cuối');
   if (colCuoi >= 0) sh.getRange(found.rowIndex, colCuoi + 1).setValue(new Date());
-  
+
   return { token: token, email: emailLower, tenDN: session.tenDN, maSoDN: session.maSoDN,
     vaiTro: vaiTro, duAn360: duAn360, expiresAt: expiresAt };
 };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TELEGRAM BOT — Thông báo hoạt động hệ thống + xác nhận trực tiếp trên Telegram
+// ─────────────────────────────────────────────────────────────────────────────
+// THIẾT LẬP (làm 1 lần):
+// 1. Chat với @BotFather trên Telegram → /newbot → lấy BOT TOKEN.
+// 2. Tạo group Telegram cho Ban quản lý, thêm bot vào group.
+//    Lấy CHAT ID: thêm @getidsbot vào group (hoặc mở
+//    https://api.telegram.org/bot<TOKEN>/getUpdates sau khi nhắn 1 tin trong group).
+// 3. Apps Script → Project Settings → Script Properties → thêm:
+//      TELEGRAM_BOT_TOKEN = <token BotFather cấp>
+//      TELEGRAM_CHAT_ID   = <chat id group, ví dụ -1001234567890>
+// 4. Deploy Web App phiên bản mới, sau đó chạy hàm installTelegramWebhook (Run 1 lần)
+//    để bot nhận được nút bấm xác nhận + lệnh /tiendo.
+// 5. (Tùy chọn) Chạy installDailyDigestTrigger để 7h sáng mỗi ngày bot tự gửi
+//    báo cáo phân tích tiến độ Gantt vào group.
+// ═════════════════════════════════════════════════════════════════════════════
+
+var TG_WATCHED_SHEETS = {
+  "Dự án": "🏗️", "Gói thầu": "📦", "Hợp đồng": "📝", "Phụ lục HĐ": "📎",
+  "Nghiệm thu": "✅", "Nhiệm vụ": "🗂️", "Nhân sự": "👤", "Nhà thầu": "🏢",
+  "Gantt": "📈", "Báo cáo": "📋", "Báo cáo TVGS": "🔍", "Nhà thầu TVGS": "🏢",
+  "Quyết toán DAHT": "💰"
+};
+
+function tgProps_() {
+  var props = PropertiesService.getScriptProperties();
+  return {
+    token: props.getProperty('TELEGRAM_BOT_TOKEN') || '',
+    chatId: props.getProperty('TELEGRAM_CHAT_ID') || ''
+  };
+}
+
+function tgApi_(method, payload) {
+  var cfg = tgProps_();
+  if (!cfg.token) return null;
+  try {
+    var res = UrlFetchApp.fetch('https://api.telegram.org/bot' + cfg.token + '/' + method, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    return JSON.parse(res.getContentText());
+  } catch (e) {
+    Logger.log('Telegram API error (' + method + '): ' + e.message);
+    return null;
+  }
+}
+
+// Gửi tin nhắn tới group quản lý. withAck=true → kèm nút "✅ Đã nắm thông tin"
+function notifyTelegram_(text, withAck) {
+  var cfg = tgProps_();
+  if (!cfg.token || !cfg.chatId) return; // chưa cấu hình → bỏ qua êm
+  var payload = { chat_id: cfg.chatId, text: text, parse_mode: 'HTML', disable_web_page_preview: true };
+  if (withAck) {
+    payload.reply_markup = { inline_keyboard: [[{ text: '✅ Đã nắm thông tin', callback_data: 'ack' }]] };
+  }
+  tgApi_('sendMessage', payload);
+}
+
+// Nhãn hiển thị ngắn gọn cho 1 bản ghi (không bao giờ đưa mật khẩu vào tin nhắn)
+function tgRecordLabel_(data) {
+  if (!data) return '';
+  var label = data.tenDA || data.tenCT || data.tenHD || data.tenGT || data.hoTen ||
+              data.tenDN || data.tenNhaThau || data.workItem || data.moTa || data.tenCongTrinh || '';
+  label = String(label);
+  if (label.length > 70) label = label.substring(0, 70) + '…';
+  var id = data.__id || data.maDA || data.id || data.maCT || data.maHD || data.maGT ||
+           data.maNV || data.maSoDN || data.maSoNhaThau || data.maBC || data.maQT || '';
+  var parts = [];
+  if (id) parts.push('<code>' + id + '</code>');
+  if (label) parts.push(label);
+  return parts.join(' — ');
+}
+
+// Hook thông báo CRUD: gọi sau mỗi create/update/delete thành công.
+// Luôn bọc try/catch — lỗi Telegram KHÔNG được phép làm hỏng API chính.
+function tgNotifyCrud_(action, sheetName, data, actor) {
+  try {
+    var icon = TG_WATCHED_SHEETS[sheetName];
+    if (!icon) return; // sheet không theo dõi
+    var actionLabel = { create: '🆕 Tạo mới', update: '✏️ Cập nhật', delete: '🗑 <b>XÓA</b>' }[action] || action;
+    var who = (actor && (actor.hoTen || actor.name || actor.email)) || 'Không rõ người thao tác';
+    var time = Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'HH:mm dd/MM/yyyy');
+    var lines = [
+      actionLabel + ' ' + icon + ' <b>' + sheetName + '</b>',
+      tgRecordLabel_(data)
+    ].filter(Boolean);
+    lines.push('👤 ' + who + ' • 🕐 ' + time);
+    // Xóa là hành động nhạy cảm → kèm nút xác nhận để Quản lý bấm "đã nắm"
+    notifyTelegram_(lines.join('\n'), action === 'delete');
+  } catch (e) {
+    Logger.log('tgNotifyCrud_ error: ' + e.message);
+  }
+}
+
+// Xử lý update Telegram gửi về webhook (doPost)
+function handleTelegramUpdate_(update) {
+  var cfg = tgProps_();
+
+  // 1. Người dùng bấm nút inline (xác nhận)
+  if (update.callback_query) {
+    var cb = update.callback_query;
+    var fromName = ((cb.from && (cb.from.first_name || '') + ' ' + (cb.from.last_name || '')) || '').trim() || 'Ẩn danh';
+    tgApi_('answerCallbackQuery', { callback_query_id: cb.id, text: 'Đã ghi nhận xác nhận của bạn ✅' });
+    if (cb.message) {
+      var newText = (cb.message.text || '') + '\n\n☑️ <b>' + fromName + '</b> đã xác nhận lúc ' +
+                    Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'HH:mm dd/MM/yyyy');
+      tgApi_('editMessageText', {
+        chat_id: cb.message.chat.id,
+        message_id: cb.message.message_id,
+        text: newText,
+        parse_mode: 'HTML'
+      });
+    }
+    return;
+  }
+
+  // 2. Lệnh chat: /tiendo — gửi ngay báo cáo phân tích tiến độ Gantt
+  if (update.message && update.message.text) {
+    var chatId = String(update.message.chat.id);
+    // Chỉ phục vụ đúng group/chat đã cấu hình (tránh lộ dữ liệu cho người lạ chat với bot)
+    if (cfg.chatId && chatId !== String(cfg.chatId)) return;
+    var txt = update.message.text.trim().toLowerCase();
+    if (txt.indexOf('/tiendo') === 0 || txt.indexOf('/baocao') === 0) {
+      notifyTelegram_(buildGanttDigestText_(), false);
+    } else if (txt.indexOf('/start') === 0 || txt.indexOf('/help') === 0) {
+      notifyTelegram_('🤖 <b>CPM 5.0 Bot</b>\nLệnh khả dụng:\n/tiendo — Báo cáo phân tích tiến độ &amp; giá trị Gantt', false);
+    }
+  }
+}
+
+// Chạy 1 LẦN sau khi deploy Web App + cấu hình Script Properties
+function installTelegramWebhook() {
+  var url = ScriptApp.getService().getUrl();
+  var res = tgApi_('setWebhook', { url: url, allowed_updates: ['message', 'callback_query'] });
+  Logger.log('setWebhook → ' + JSON.stringify(res));
+}
+
+function removeTelegramWebhook() {
+  Logger.log(JSON.stringify(tgApi_('deleteWebhook', {})));
+}
+
+// Gửi thử 1 tin để kiểm tra cấu hình
+function testTelegram() {
+  notifyTelegram_('🔔 CPM 5.0: kết nối Telegram thành công!', true);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PHÂN TÍCH TIẾN ĐỘ & GIÁ TRỊ GANTT (server) — dùng cho digest Telegram
+// Cùng logic với panel "Phân tích tiến độ" trên trang Gantt (gantt.html).
+// ═════════════════════════════════════════════════════════════════════════════
+
+function ganttParseDate_(s) {
+  if (!s) return null;
+  s = String(s).trim();
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function ganttNorm_(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
+}
+
+// Phân loại 1 công tác Gantt. Trả về:
+// { status: done|ahead|ontrack|atrisk|late|nodata|future, planned, actual, source }
+function ganttClassifyTask_(t, reports, now) {
+  var start = ganttParseDate_(t.ngayBatDau);
+  var end = ganttParseDate_(t.ngayKetThuc);
+  if (!start || !end || end < start) return { status: 'nodata', planned: null, actual: null, source: 'Thiếu ngày' };
+
+  var planned;
+  if (now < start) planned = 0;
+  else if (now >= end) planned = 100;
+  else planned = Math.round(((now - start) / (end - start)) * 100);
+
+  // Tiến độ thực tế: ưu tiên báo cáo ngày gắn đúng Mã công tác → khớp tên hạng mục → trạng thái Gantt
+  var actual = null, source = '';
+  var best = null, bestDate = null;
+  var tMaCT = String(t.maCT || '').trim();
+  var tNameNorm = ganttNorm_(t.tenCT);
+  for (var i = 0; i < reports.length; i++) {
+    var r = reports[i];
+    if (String(r.maDA || '').trim() !== String(t.maDA || '').trim()) continue;
+    var pct = parseFloat(r.progressPercent);
+    if (isNaN(pct)) continue;
+    var match = false, viaCT = false;
+    if (tMaCT && String(r.maCT || '').trim() === tMaCT) { match = true; viaCT = true; }
+    else if (tNameNorm) {
+      var wNorm = ganttNorm_(r.workItem);
+      if (wNorm && (wNorm.indexOf(tNameNorm) >= 0 || tNameNorm.indexOf(wNorm) >= 0)) match = true;
+    }
+    if (!match) continue;
+    var rd = ganttParseDate_(r.date) || new Date(0);
+    var tier = viaCT ? 2 : 1; // báo cáo gắn đúng mã công tác luôn thắng khớp tên
+    if (!best || tier > best.tier || (tier === best.tier && rd > bestDate)) {
+      best = { pct: pct, tier: tier };
+      bestDate = rd;
+    }
+  }
+  if (best) {
+    actual = Math.max(0, Math.min(100, best.pct));
+    source = best.tier === 2 ? 'BC ngày (mã công tác)' : 'BC ngày (khớp tên)';
+  } else if (/hoàn thành|hoan thanh|xong|100/.test(ganttNorm_(t.trangThai))) {
+    actual = 100;
+    source = 'Trạng thái Gantt';
+  }
+
+  if (now < start) return { status: 'future', planned: 0, actual: actual, source: source || '—' };
+  if (actual === null) return { status: 'nodata', planned: planned, actual: null, source: '—' };
+  if (actual >= 100) return { status: 'done', planned: planned, actual: 100, source: source };
+
+  var delta = actual - planned;
+  var daysLeft = Math.ceil((end - now) / 86400000);
+  var status;
+  if (now >= end || delta < -15) status = 'late';
+  else if (delta < -5 || (daysLeft <= 7 && delta < 0)) status = 'atrisk';
+  else if (delta <= 5) status = 'ontrack';
+  else status = 'ahead';
+  return { status: status, planned: planned, actual: actual, source: source };
+}
+
+function tgFmtMoney_(v) {
+  var n = Math.round(parseFloat(v) || 0);
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+// Digest văn bản gửi Telegram: tổng hợp trạng thái + danh sách trễ / nguy cơ
+function buildGanttDigestText_() {
+  var tasks = new CRUDService("Gantt", true).list();
+  var reports = [];
+  try { reports = new CRUDService("Báo cáo", true).list(); } catch (e) {}
+  var now = new Date();
+
+  var counts = { ahead: 0, ontrack: 0, atrisk: 0, late: 0, done: 0, nodata: 0, future: 0 };
+  var pvSum = 0, evSum = 0;
+  var lateList = [], riskList = [];
+
+  tasks.forEach(function(t) {
+    if (!String(t.tenCT || '').trim()) return;
+    var c = ganttClassifyTask_(t, reports, now);
+    counts[c.status]++;
+    var gia = parseFloat(t.giaTriCT) || 0;
+    if (c.planned !== null) pvSum += gia * c.planned / 100;
+    if (c.actual !== null) evSum += gia * c.actual / 100;
+    var line = '• <code>' + (t.maDA || '') + '</code> ' + String(t.tenCT).substring(0, 45) +
+               ' (KH ' + c.planned + '% / TH ' + (c.actual === null ? '—' : c.actual + '%') + ')';
+    if (c.status === 'late') lateList.push(line);
+    if (c.status === 'atrisk') riskList.push(line);
+  });
+
+  var lines = [
+    '📈 <b>PHÂN TÍCH TIẾN ĐỘ GANTT — ' + Utilities.formatDate(now, 'Asia/Ho_Chi_Minh', 'dd/MM/yyyy') + '</b>',
+    '',
+    '🚀 Vượt tiến độ: <b>' + counts.ahead + '</b>   ✅ Đúng tiến độ: <b>' + counts.ontrack + '</b>',
+    '⚠️ Nguy cơ trễ: <b>' + counts.atrisk + '</b>   🔴 Trễ tiến độ: <b>' + counts.late + '</b>',
+    '🏁 Hoàn thành: <b>' + counts.done + '</b>   ⏳ Chưa tới hạn: <b>' + counts.future + '</b>   ❔ Chưa có số liệu: <b>' + counts.nodata + '</b>',
+    '',
+    '💵 Giá trị KH đến nay (PV): <b>' + tgFmtMoney_(pvSum) + '</b>',
+    '💰 Giá trị thực hiện (EV): <b>' + tgFmtMoney_(evSum) + '</b>',
+    '📊 Chênh lệch (SV): <b>' + tgFmtMoney_(evSum - pvSum) + '</b>'
+  ];
+  if (lateList.length) {
+    lines.push('', '🔴 <b>TRỄ TIẾN ĐỘ:</b>');
+    lines = lines.concat(lateList.slice(0, 8));
+    if (lateList.length > 8) lines.push('… và ' + (lateList.length - 8) + ' công tác khác');
+  }
+  if (riskList.length) {
+    lines.push('', '⚠️ <b>NGUY CƠ TRỄ:</b>');
+    lines = lines.concat(riskList.slice(0, 8));
+    if (riskList.length > 8) lines.push('… và ' + (riskList.length - 8) + ' công tác khác');
+  }
+  lines.push('', '👉 Chi tiết: mở CPM 5.0 → Sơ đồ Gantt → nút "Phân tích tiến độ"');
+  return lines.join('\n');
+}
+
+// Gửi digest hằng ngày (dùng bởi trigger)
+function sendDailyGanttDigest() {
+  notifyTelegram_(buildGanttDigestText_(), false);
+}
+
+// Chạy 1 LẦN để cài trigger 7h sáng mỗi ngày
+function installDailyDigestTrigger() {
+  var exists = ScriptApp.getProjectTriggers().some(function(t) {
+    return t.getHandlerFunction() === 'sendDailyGanttDigest';
+  });
+  if (!exists) {
+    ScriptApp.newTrigger('sendDailyGanttDigest').timeBased().everyDays(1).atHour(7).create();
+    Logger.log('Đã cài trigger sendDailyGanttDigest lúc 7h sáng hằng ngày');
+  } else {
+    Logger.log('Trigger đã tồn tại — bỏ qua');
+  }
+}

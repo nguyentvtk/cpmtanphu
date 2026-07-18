@@ -114,7 +114,8 @@ deploy.bat                 # commit + push GitHub → Vercel tự build
 ### 4.1. Báo cáo thi công ngày (quan trọng nhất)
 1. Menu **Báo cáo ngày**.
 2. Chọn **Dự án**, nhập **ngày**, **nội dung thi công**, **nhân lực/thiết bị**, **khối lượng**, **đính kèm ảnh/URL** nếu có.
-3. Bấm **Lưu** → báo cáo ghi vào sheet `Báo cáo`.
+3. **Chọn "Công tác Gantt"** tương ứng (dropdown tự lọc theo dự án) và nhập **Tiến độ (%) = % lũy kế hoàn thành của công tác đó** — đây là nguồn số liệu để hệ thống phân tích tiến độ tự động (xem mục 6B).
+4. Bấm **Lưu** → báo cáo ghi vào sheet `Báo cáo`.
 4. Bạn **chỉ thấy báo cáo của chính mình**; Quản lý/Giám đốc thấy tất cả.
 
 ### 4.2. Cập nhật nhiệm vụ
@@ -163,6 +164,55 @@ deploy.bat                 # commit + push GitHub → Vercel tự build
 - Nộp **báo cáo giám sát** theo **lịch** mà Ban QLDA thiết lập (Hàng ngày / Tuần / Tháng).
 - **Trễ hạn** → hệ thống tự gửi **email cảnh báo**. Đủ **3 lần vi phạm** → bị đánh dấu **"Vi phạm kỷ luật"** và email báo Ban Giám đốc.
 - Nhà thầu TVGS được nhận diện tự động qua Hợp đồng có tên chứa chữ **"giám sát"**.
+
+---
+
+## 6B. PHÂN TÍCH TIẾN ĐỘ & GIÁ TRỊ THỰC HIỆN (trang Sơ đồ Gantt)
+
+Trang **Sơ đồ Gantt** có nút **"📈 Phân tích tiến độ"** (góc phải thanh công cụ). Hệ thống tự so sánh **tiến độ kế hoạch** với **tiến độ thực tế** của từng công tác và phân loại:
+
+| Trạng thái | Ý nghĩa | Điều kiện |
+|---|---|---|
+| 🚀 Vượt tiến độ | Thực hiện nhanh hơn kế hoạch | TH% > KH% + 5 |
+| ✅ Đúng tiến độ | Bám sát kế hoạch | Chênh lệch trong ±5% |
+| ⚠️ Nguy cơ trễ | Cần đôn đốc | Chậm 5–15%, hoặc còn ≤7 ngày mà chưa đạt KH |
+| 🔴 Trễ tiến độ | Cần xử lý ngay | Chậm >15%, hoặc quá hạn mà chưa xong |
+| 🏁 Hoàn thành | Đã đạt 100% | — |
+| ⏳ Chưa tới hạn | Công tác chưa bắt đầu | — |
+| ❔ Chưa có số liệu | Chưa có báo cáo thực tế nào khớp | — |
+
+**Cách tính:**
+- **KH%** (kế hoạch) = thời gian đã trôi qua ÷ tổng thời gian công tác (theo ngày bắt đầu/kết thúc trên Gantt).
+- **TH%** (thực hiện) lấy từ **Báo cáo ngày** của cán bộ kỹ thuật: ưu tiên báo cáo **gắn đúng Mã công tác Gantt**, sau đó mới khớp theo tên hạng mục; nếu không có thì dùng trạng thái "Hoàn thành" trên Gantt.
+- **Giá trị:** PV = Giá trị công tác × KH%, EV = Giá trị công tác × TH%, SV = EV − PV (âm là chậm giá trị).
+- Panel còn hiển thị **ghi nhận TVGS gần nhất** của từng dự án (đánh giá chất lượng, vi phạm).
+
+**📌 Quy định cho Cán bộ QLDA (quan trọng để số liệu chính xác):** khi nộp **Báo cáo ngày**, hãy chọn đúng **"Công tác Gantt"** trong form (dropdown tự lọc theo dự án, chọn xong tự điền tên hạng mục) và nhập **Tiến độ (%) = % LŨY KẾ hoàn thành của công tác đó** (không phải % của riêng ngày hôm ấy). Báo cáo không gắn công tác vẫn hợp lệ nhưng hệ thống phải đoán theo tên, kém chính xác hơn.
+
+---
+
+## 6C. THÔNG BÁO TELEGRAM CHO BAN QUẢN LÝ
+
+Khi cấu hình xong, mọi thao tác **Tạo mới / Cập nhật / Xóa** trên các sheet quan trọng (Dự án, Hợp đồng, Nhiệm vụ, Báo cáo, Nhà thầu, Gantt, Quyết toán…) sẽ được bot nhắn ngay vào group Telegram của Ban quản lý, kèm **tên người thao tác + thời gian**. Hành động **Xóa** kèm nút **"✅ Đã nắm thông tin"** — Quản lý bấm trực tiếp trên Telegram để xác nhận (tin nhắn tự ghi lại ai đã xác nhận, lúc nào).
+
+**Lệnh chat với bot (trong group):**
+- `/tiendo` — nhận ngay **báo cáo phân tích tiến độ & giá trị Gantt** (số công tác vượt/đúng/nguy cơ/trễ, PV/EV/SV, danh sách công tác trễ).
+- Ngoài ra bot tự gửi báo cáo này **7h sáng mỗi ngày** (nếu bật trigger).
+
+**Thiết lập (Admin làm 1 lần):**
+1. Telegram → chat với **@BotFather** → `/newbot` → đặt tên → nhận **BOT TOKEN**.
+2. Tạo **group Telegram** cho Ban quản lý, thêm bot vào group. Lấy **CHAT ID** của group (thêm @getidsbot vào group, hoặc mở `https://api.telegram.org/bot<TOKEN>/getUpdates` sau khi nhắn 1 tin).
+3. Apps Script → ⚙️ **Project Settings → Script Properties** → thêm 2 khóa:
+   - `TELEGRAM_BOT_TOKEN` = token ở bước 1
+   - `TELEGRAM_CHAT_ID` = chat id ở bước 2 (group thường bắt đầu bằng `-100`)
+4. **Deploy phiên bản mới** của Web App (bắt buộc, để code mới chạy).
+5. Trong Apps Script Editor chạy lần lượt (Run 1 lần mỗi hàm):
+   - `testTelegram` — kiểm tra bot nhắn được vào group.
+   - `installTelegramWebhook` — bật nút xác nhận + lệnh /tiendo.
+   - `installDailyDigestTrigger` — bật báo cáo tự động 7h sáng.
+
+> 🔒 Bot chỉ trả lời đúng group có CHAT_ID đã cấu hình — người lạ chat với bot sẽ không nhận được dữ liệu.
+> Chưa cấu hình Telegram thì hệ thống vẫn chạy bình thường (bỏ qua thông báo, không lỗi).
 
 ---
 

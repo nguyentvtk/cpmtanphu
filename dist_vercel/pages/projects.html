@@ -216,6 +216,13 @@ window.API_URL = window.SCRIPT_URL;
 window.CACHE_DURATION = 60000; // 60 giây
 
 async function apiPost(body) {
+  // Đính kèm người thao tác (phục vụ thông báo Telegram cho Quản lý)
+  try {
+    if (!body._actor) {
+      const _p = JSON.parse(localStorage.getItem('userProfile') || 'null');
+      if (_p) body._actor = { hoTen: _p.hoTen || _p.tenDN || _p.name || '', maNV: _p.maNV || '', email: _p.email || '' };
+    }
+  } catch(e) {}
   const res = await fetch(API_URL, {
     method: 'POST',
     redirect: 'follow',
