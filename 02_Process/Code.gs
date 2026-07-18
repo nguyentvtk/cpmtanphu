@@ -2517,9 +2517,17 @@ var TG_WATCHED_SHEETS = {
 
 function tgProps_() {
   var props = PropertiesService.getScriptProperties();
+  // TELEGRAM_CHAT_ID hỗ trợ 2 dạng:
+  //   "-1002010998673"      → gửi vào group (tab General)
+  //   "-1002010998673_254"  → gửi vào đúng TOPIC 254 của group (link t.me/c/2010998673/254)
+  var rawChat = String(props.getProperty('TELEGRAM_CHAT_ID') || '').trim();
+  var chatId = rawChat, threadId = '';
+  var m = rawChat.match(/^(-?\d+)_(\d+)$/);
+  if (m) { chatId = m[1]; threadId = m[2]; }
   return {
     token: props.getProperty('TELEGRAM_BOT_TOKEN') || '',
-    chatId: props.getProperty('TELEGRAM_CHAT_ID') || ''
+    chatId: chatId,
+    threadId: threadId
   };
 }
 
@@ -2545,6 +2553,7 @@ function notifyTelegram_(text, withAck) {
   var cfg = tgProps_();
   if (!cfg.token || !cfg.chatId) return; // chưa cấu hình → bỏ qua êm
   var payload = { chat_id: cfg.chatId, text: text, parse_mode: 'HTML', disable_web_page_preview: true };
+  if (cfg.threadId) payload.message_thread_id = parseInt(cfg.threadId); // gửi vào đúng topic
   if (withAck) {
     payload.reply_markup = { inline_keyboard: [[{ text: '✅ Đã nắm thông tin', callback_data: 'ack' }]] };
   }

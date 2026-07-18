@@ -205,6 +205,7 @@ Khi cấu hình xong, mọi thao tác **Tạo mới / Cập nhật / Xóa** trê
 3. Apps Script → ⚙️ **Project Settings → Script Properties** → thêm 2 khóa:
    - `TELEGRAM_BOT_TOKEN` = token ở bước 1
    - `TELEGRAM_CHAT_ID` = chat id ở bước 2 (group thường bắt đầu bằng `-100`)
+   - 💡 Group có bật **Topics** (diễn đàn): muốn bot gửi vào đúng topic, dùng dạng `chatid_topicid`, ví dụ `-1002010998673_254` (topic 254 — lấy số cuối trong link `t.me/c/…/254`)
 4. **Deploy phiên bản mới** của Web App (bắt buộc, để code mới chạy).
 5. Trong Apps Script Editor chạy lần lượt (Run 1 lần mỗi hàm):
    - `testTelegram` — kiểm tra bot nhắn được vào group.

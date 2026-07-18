@@ -164,7 +164,11 @@
     html.in-iframe #sidebar,
     html.in-iframe .top-navbar,
     body.in-iframe #sidebar,
-    body.in-iframe .top-navbar {
+    body.in-iframe .top-navbar,
+    html.in-iframe .mobile-toggle,
+    body.in-iframe .mobile-toggle,
+    html.in-iframe #mobileSidebarToggle,
+    body.in-iframe #mobileSidebarToggle {
       display: none !important;
     }
     html.in-iframe #content,
@@ -815,6 +819,7 @@ window.Auth = {
     }
     body.is-embedded header, body.is-embedded .topbar { display: none !important; }
     body.is-embedded #sidebarCollapse, body.is-embedded #sidebarCollapseMobile { display: none !important; }
+    body.is-embedded .mobile-toggle, body.is-embedded #mobileSidebarToggle { display: none !important; }
   </style>
 </head>
 <body>
