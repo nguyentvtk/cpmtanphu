@@ -2424,6 +2424,10 @@ window.Auth = {
     // --- CHECKBOX COMPLETION LOGIC ---
     let pendingTaskCheckId = null;
     function toggleTaskCheckbox(id, isCompleted) {
+      if (!id) {
+        showToast("Công tác này chưa có Mã công tác. Quản trị viên hãy chạy hàm repairGanttMaCT trong Apps Script để khôi phục mã.", "error");
+        return;
+      }
       if (isCompleted) {
         confirmToggleTaskUncompleted(id);
       } else {
@@ -2436,10 +2440,13 @@ window.Auth = {
     document.getElementById('btnConfirmDoneAction').addEventListener('click', async () => {
       if (!pendingTaskCheckId) return;
       confirmDoneModal.hide();
-      
+
       try {
         const task = ganttTasks.find(t => String(t.id || t.maCT) === String(pendingTaskCheckId));
-        if (!task) return;
+        if (!task) {
+          showToast("Không tìm thấy công tác với mã " + pendingTaskCheckId + " — hãy tải lại trang.", "error");
+          return;
+        }
 
         task.trangThai = "Hoàn thành";
         await API.update('gantt', pendingTaskCheckId, task);

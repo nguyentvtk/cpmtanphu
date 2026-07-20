@@ -395,6 +395,10 @@ function doPost(e) {
       return responseSuccess(null, 'Đăng xuất thành công');
     }
 
+    if (action === 'gantt_repair') {
+      return responseSuccess(repairGanttMaCT(), "Đã sửa chữa Mã công tác Gantt");
+    }
+
     if (action === 'tvgs_sync') {
       return responseSuccess(syncTVGSAccounts(), "Đồng bộ tài khoản TVGS thành công");
     }
@@ -910,7 +914,10 @@ class CRUDService {
         headers.forEach(function(h, j) {
           var cleanH = String(h).trim();
           var key = map[cleanH] || cleanH;
-          if (j === keyColIdx && (id === "#REF!" || id === "")) return;
+          // KHÔNG ghi đè cột khóa: giá trị không đổi (chính là id dùng để tìm dòng),
+          // và nếu cột khóa sinh bằng ARRAYFORMULA thì setValue sẽ phá công thức,
+          // làm mất mã của toàn bộ các dòng khác (sự cố cột Mã công tác Gantt).
+          if (j === keyColIdx) return;
           // Bảo mật: với sheet chứa mật khẩu, nếu client gửi password rỗng
           // (do API không còn trả mật khẩu cũ) thì GIỮ NGUYÊN mật khẩu hiện có,
           // không ghi đè thành chuỗi rỗng.
@@ -2794,6 +2801,62 @@ function buildGanttDigestText_() {
   }
   lines.push('', '👉 Chi tiết: mở CPM 5.0 → Sơ đồ Gantt → nút "Phân tích tiến độ"');
   return lines.join('\n');
+}
+
+// ─── SỬA CHỮA DỮ LIỆU GANTT ──────────────────────────────────────────────────
+// Cột "Mã công tác" từng sinh bằng ARRAYFORMULA; khi bị ghi đè giá trị tĩnh,
+// công thức vỡ làm mất mã của các dòng khác. Hàm này điền lại mã TĨNH dạng
+// <Mã dự án>-### (đánh số theo thứ tự dòng trong từng dự án, tôn trọng các mã
+// đang có để không trùng). Chạy từ Apps Script Editor hoặc qua action 'gantt_repair'.
+function repairGanttMaCT() {
+  var sheet = SS.getSheetByName("Gantt");
+  if (!sheet) throw new Error("Không tìm thấy sheet Gantt");
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return { fixed: 0, total: 0 };
+
+  var mapG = SCHEMA_MAP["Gantt"] || {};
+  var headers = data[0].map(function(h) { return String(h).trim(); });
+  var colMaDA = -1, colMaCT = -1, colTenCT = -1;
+  headers.forEach(function(h, i) {
+    var k = mapG[h] || h;
+    if (k === 'maDA' && colMaDA < 0) colMaDA = i;
+    if (k === 'maCT' && colMaCT < 0) colMaCT = i;
+    if (k === 'tenCT' && colTenCT < 0) colTenCT = i;
+  });
+  if (colMaDA < 0 || colMaCT < 0) throw new Error("Không tìm thấy cột Mã dự án / Mã công tác");
+
+  // Ghi nhận số thứ tự lớn nhất đang dùng của từng dự án (mã còn sót lại)
+  var maxSeq = {};
+  for (var r = 1; r < data.length; r++) {
+    var ct = String(data[r][colMaCT]).trim();
+    var m = ct.match(/^(.+)-(\d+)$/);
+    if (m) {
+      var n = parseInt(m[2], 10);
+      if (!maxSeq[m[1]] || n > maxSeq[m[1]]) maxSeq[m[1]] = n;
+    }
+  }
+
+  var out = [];
+  var fixed = 0;
+  for (var i = 1; i < data.length; i++) {
+    var maDA = String(data[i][colMaDA]).trim();
+    var cur = String(data[i][colMaCT]).trim();
+    var ten = colTenCT >= 0 ? String(data[i][colTenCT]).trim() : '';
+    if ((!cur || cur.indexOf('#') === 0) && maDA && ten) {
+      var seq = (maxSeq[maDA] || 0) + 1;
+      maxSeq[maDA] = seq;
+      cur = maDA + '-' + ('000' + seq).slice(-3);
+      fixed++;
+    }
+    out.push([cur]);
+  }
+
+  if (fixed > 0) {
+    sheet.getRange(2, colMaCT + 1, out.length, 1).setValues(out);
+    SpreadsheetApp.flush();
+    cacheClear_("Gantt");
+  }
+  return { fixed: fixed, total: data.length - 1 };
 }
 
 // Gửi digest hằng ngày (dùng bởi trigger)
