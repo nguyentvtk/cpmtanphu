@@ -691,7 +691,7 @@ class CRUDService {
 
   get(id) {
     var data = this.list();
-    var pk = Object.values(this.map)[0];
+    var pk = this.sheetName === "Gantt" ? "maCT" : Object.values(this.map)[0];
     for (var i = 0; i < data.length; i++) {
       if (data[i][pk] == id) return data[i];
     }
@@ -902,12 +902,15 @@ class CRUDService {
     
     var targetIdStr = String(id).trim();
     var sheetName = this.sheetName;
+    // Sheet Gantt: khóa duy nhất là "Mã công tác" (maCT), KHÔNG phải cột A
+    // (cột A là Mã dự án, trùng nhau giữa nhiều công tác cùng dự án)
+    var keyColIdx = this.getKeyColIndex_(headers);
     for (var i = 1; i < allData.length; i++) {
-      if (String(allData[i][0]).trim() === targetIdStr) {
+      if (String(allData[i][keyColIdx]).trim() === targetIdStr) {
         headers.forEach(function(h, j) {
           var cleanH = String(h).trim();
           var key = map[cleanH] || cleanH;
-          if (j === 0 && (id === "#REF!" || id === "")) return;
+          if (j === keyColIdx && (id === "#REF!" || id === "")) return;
           // Bảo mật: với sheet chứa mật khẩu, nếu client gửi password rỗng
           // (do API không còn trả mật khẩu cũ) thì GIỮ NGUYÊN mật khẩu hiện có,
           // không ghi đè thành chuỗi rỗng.
@@ -929,17 +932,30 @@ class CRUDService {
     throw new Error("Không tìm thấy bản ghi với ID: " + id);
   }
 
+  // Xác định cột khóa để tìm bản ghi theo ID.
+  // Mặc định cột A; riêng sheet Gantt dùng cột "Mã công tác" (maCT) vì cột A
+  // (Mã dự án) lặp lại giữa các công tác cùng dự án.
+  getKeyColIndex_(headers) {
+    if (this.sheetName !== "Gantt") return 0;
+    var map = this.map;
+    for (var h = 0; h < headers.length; h++) {
+      if ((map[String(headers[h]).trim()] || '') === 'maCT') return h;
+    }
+    return 0;
+  }
+
   delete(id) {
     cacheClear_(this.sheetName);
     if (!id || String(id).trim() === "") {
       throw new Error("Không thể xóa bản ghi với ID rỗng!");
     }
-    
+
     this.cleanArrayFormulaConflicts();
     var allData = this.sheet.getDataRange().getValues();
     var targetIdStr = String(id).trim();
+    var keyColIdx = this.getKeyColIndex_(allData[0] || []);
     for (var i = 1; i < allData.length; i++) {
-      if (String(allData[i][0]).trim() === targetIdStr) {
+      if (String(allData[i][keyColIdx]).trim() === targetIdStr) {
         this.sheet.deleteRow(i + 1);
         return true;
       }
