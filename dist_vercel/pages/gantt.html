@@ -2315,7 +2315,7 @@ window.Auth = {
           tasks.forEach(task => {
             const tStart = parseDateStr(task.ngayBatDau);
             const tEnd = parseDateStr(task.ngayKetThuc);
-            const isCompleted = task.trangThai === "Hoàn thành";
+            const isCompleted = isTaskDone(task);
             const taskKeyId = task.id || task.maCT;
 
             // --- Render Task Row (Tree Pane) ---
@@ -2422,6 +2422,16 @@ window.Auth = {
     }
 
     // --- CHECKBOX COMPLETION LOGIC ---
+    // Nhận diện "Hoàn thành" bao dung: người dùng có thể gõ tay vào cột I
+    // (Trạng thái) của sheet Gantt với hoa/thường, thừa dấu cách, có/không dấu,
+    // hoặc các biến thể tương đương — checkbox trên giao diện vẫn được đánh dấu.
+    function isTaskDone(task) {
+      const s = gaNorm(task && task.trangThai); // lowercase + bỏ dấu + gọn khoảng trắng
+      if (!s) return false;
+      // Neo đầu-cuối để "chua hoan thanh" / "khong hoan thanh" KHÔNG khớp nhầm
+      return /^(da )?hoan thanh$|^xong$|^done$|^100\s*%?$|^x$|^v$|^ok$/.test(s);
+    }
+
     let pendingTaskCheckId = null;
     function toggleTaskCheckbox(id, isCompleted) {
       if (!id) {
@@ -2914,7 +2924,7 @@ window.Auth = {
       if (best) {
         actual = Math.max(0, Math.min(100, best.pct));
         source = best.tier === 2 ? 'BC ngày (mã công tác)' : 'BC ngày (khớp tên)';
-      } else if (/hoan thanh|xong|100/.test(gaNorm(t.trangThai))) {
+      } else if (isTaskDone(t)) {
         actual = 100;
         source = 'Trạng thái Gantt';
       }

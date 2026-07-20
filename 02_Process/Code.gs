@@ -2730,7 +2730,8 @@ function ganttClassifyTask_(t, reports, now) {
   if (best) {
     actual = Math.max(0, Math.min(100, best.pct));
     source = best.tier === 2 ? 'BC ngày (mã công tác)' : 'BC ngày (khớp tên)';
-  } else if (/hoàn thành|hoan thanh|xong|100/.test(ganttNorm_(t.trangThai))) {
+  } else if (/^(da )?hoan thanh$|^xong$|^done$|^100\s*%?$|^x$|^v$|^ok$/.test(ganttNorm_(t.trangThai))) {
+    // Neo đầu-cuối: "chua hoan thanh" (mặc định khi tạo công tác) KHÔNG được tính là xong
     actual = 100;
     source = 'Trạng thái Gantt';
   }
