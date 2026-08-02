@@ -250,20 +250,30 @@
   /** Sheet "Dự án" (A→V) */
   function mapProject(p) {
     var tongMuc = toNum(pick(p, ['tongMucDauTu', 'Tổng mức đầu tư']));
-    var soGiaiNgan = toNum(pick(p, ['soGiaiNgan', 'Số giải ngân', 'giaiNgan', 'disbursed'], { exclude: ['tyle', 'ratio'] }));
-    var tyLeRaw = pick(p, ['tyLeGiaiNgan', 'Tỷ lệ giải ngân', 'tyLe']);
-    var tyLe = toNum(tyLeRaw);
-    if (tyLe > 1.5) tyLe = tyLe / 100;                                  // sheet ghi 38 thay vì 0,38
-    if (!tyLe && tongMuc > 0) tyLe = soGiaiNgan / tongMuc;              // tự tính nếu trống
-    if (!soGiaiNgan && tyLe && tongMuc) soGiaiNgan = tyLe * tongMuc;
 
+    // ── 5 nguồn vốn thành phần: cột L, M, N, O, P của sheet "Dự án" ──
     var sources = {
-      'Chuẩn bị đầu tư':        toNum(pick(p, ['nguonCBDT', 'Nguồn Chuẩn bị đầu tư'])),
-      'NS tập trung':           toNum(pick(p, ['nguonNSTT', 'Nguồn NS tập trung'])),
-      'Thu tiền SDĐ':           toNum(pick(p, ['nguonThuSDD', 'Nguồn thu tiền SDĐ'], { exclude: ['tangthu'] })),
-      'Tăng thu SDĐ tỉnh bổ sung': toNum(pick(p, ['nguonTangThuSDD', 'Nguồn tăng thu tiền SDĐ tỉnh bổ sung'])),
-      'Vốn tỉnh (XSKT)':        toNum(pick(p, ['vonTinhXSKT', 'Vốn tỉnh (XSKT)', 'Vốn tỉnh']))
+      'Chuẩn bị đầu tư':        toNum(pick(p, ['nguonCBDT', 'Nguồn Chuẩn bị đầu tư'])),                    // L
+      'NS tập trung':           toNum(pick(p, ['nguonNSTT', 'Nguồn NS tập trung'])),                       // M
+      'Thu tiền SDĐ':           toNum(pick(p, ['nguonThuSDD', 'Nguồn thu tiền SDĐ'], { exclude: ['tangthu'] })), // N
+      'Tăng thu SDĐ tỉnh bổ sung': toNum(pick(p, ['nguonTangThuSDD', 'Nguồn tăng thu tiền SDĐ tỉnh bổ sung'])),  // O
+      'Vốn tỉnh (XSKT)':        toNum(pick(p, ['vonTinhXSKT', 'Vốn tỉnh (XSKT)', 'Vốn tỉnh']))             // P
     };
+
+    // TỔNG KH VỐN ĐÃ PHÂN KHAI = L + M + N + O + P
+    var tongPhanKhai = Object.keys(sources).reduce(function (a, k) { return a + sources[k]; }, 0);
+
+    var soGiaiNgan = toNum(pick(p, ['soGiaiNgan', 'Số giải ngân', 'giaiNgan', 'disbursed'], { exclude: ['tyle', 'ratio'] }));
+    var tyLeSheet = toNum(pick(p, ['tyLeGiaiNgan', 'Tỷ lệ giải ngân', 'tyLe']));
+    if (tyLeSheet > 1.5) tyLeSheet = tyLeSheet / 100;                   // sheet ghi 38 thay vì 0,38
+
+    // Suy ngược số giải ngân nếu cột T trống (cột U của sheet vốn tính trên vốn phân khai)
+    if (!soGiaiNgan && tyLeSheet && tongPhanKhai) soGiaiNgan = tyLeSheet * tongPhanKhai;
+
+    // TỶ LỆ GIẢI NGÂN = số đã giải ngân / tổng KH vốn đã phân khai
+    var tyLe = tongPhanKhai > 0 ? soGiaiNgan / tongPhanKhai : 0;
+    if (!tyLe && tyLeSheet) tyLe = tyLeSheet;                           // chưa phân khai vốn → giữ số của sheet
+    var tyLeTheoTongMuc = tongMuc > 0 ? soGiaiNgan / tongMuc : 0;       // giữ để đối chiếu
 
     return {
       raw: p,
@@ -277,12 +287,14 @@
       ngayKetThuc:     toDate(pick(p, ['ngayKetThuc', 'Ngày kết thúc'])),
       trangThai:       String(pick(p, ['trangThai', 'Trạng thái dự án', 'Trạng thái']) || 'Chưa triển khai').trim(),
       tongMucDauTu:    tongMuc,
+      tongPhanKhai:    tongPhanKhai,
       tongGTQuyetToan: toNum(pick(p, ['tongGTQuyetToan', 'Tổng GT Quyết toán'])),
       nguonVon:        sources,
       loaiDA:          String(pick(p, ['loaiDA', 'Loại Dự án', 'Loại dự án']) || 'Khác').trim() || 'Khác',
       ghiChu:          String(pick(p, ['ghiChu', 'Ghi chú']) || '').trim(),
       soGiaiNgan:      soGiaiNgan,
       tyLeGiaiNgan:    tyLe,
+      tyLeTheoTongMuc: tyLeTheoTongMuc,
       giaiDoan:        String(pick(p, ['giaiDoanHienTai', 'Giai đoạn hiện tại', 'giaiDoan']) || '').trim()
     };
   }

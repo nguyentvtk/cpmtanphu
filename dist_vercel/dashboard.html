@@ -295,11 +295,11 @@ function render(){
     kpiHTML(rows) +
     '<div class="grid g3">' +
       card('Cơ cấu dự án theo trạng thái','Số lượng dự án đang ở mỗi trạng thái','<div class="chart-box"><canvas id="chStatus"></canvas></div>') +
-      card('Cơ cấu nguồn vốn','Phân bổ theo từng nguồn vốn bố trí','<div class="chart-box"><canvas id="chSource"></canvas></div>') +
-      card('Đầu tư & giải ngân theo lĩnh vực','Tổng mức đầu tư so với số đã giải ngân (tỷ đồng)','<div class="chart-box"><canvas id="chType"></canvas></div>') +
+      card('Cơ cấu KH vốn đã phân khai','Phân bổ theo 5 nguồn vốn thành phần (cột L–P)','<div class="chart-box"><canvas id="chSource"></canvas></div>') +
+      card('Phân khai & giải ngân theo lĩnh vực','KH vốn đã phân khai so với số đã giải ngân (tỷ đồng)','<div class="chart-box"><canvas id="chType"></canvas></div>') +
     '</div>' +
     '<div class="grid g2">' +
-      card('Tỷ lệ giải ngân từng dự án','Xếp theo tỷ lệ giải ngân trên tổng mức đầu tư','<div class="chart-box chart-tall"><canvas id="chRatio"></canvas></div>') +
+      card('Tỷ lệ giải ngân từng dự án','Xếp theo tỷ lệ giải ngân trên KH vốn đã phân khai','<div class="chart-box chart-tall"><canvas id="chRatio"></canvas></div>') +
       card('Nhịp độ báo cáo hiện trường','Số báo cáo ngày nhận được theo thời gian','<div class="chart-box chart-tall"><canvas id="chPace"></canvas></div>') +
     '</div>' +
     alertHTML(rows) +
@@ -317,9 +317,11 @@ function card(title, sub, body){
 // ── KPI ──────────────────────────────────────────────
 function kpiHTML(rows){
   var ps = rows.map(function(r){return r.project;});
-  var total   = ps.reduce(function(a,p){return a+p.tongMucDauTu;},0);
+  var tmdt    = ps.reduce(function(a,p){return a+p.tongMucDauTu;},0);   // tổng mức đầu tư (tham chiếu)
+  var total   = ps.reduce(function(a,p){return a+p.tongPhanKhai;},0);   // TỔNG KH VỐN ĐÃ PHÂN KHAI (L+M+N+O+P)
   var paid    = ps.reduce(function(a,p){return a+p.soGiaiNgan;},0);
   var ratio   = total? paid/total : 0;
+  var nPK     = ps.filter(function(p){return p.tongPhanKhai>0;}).length;
   var running = ps.filter(function(p){return CPM.norm(p.trangThai).indexOf('dangthuchien')>=0;}).length;
   var done    = ps.filter(function(p){return CPM.norm(p.trangThai).indexOf('hoanthanh')>=0;}).length;
   var paused  = ps.filter(function(p){return CPM.norm(p.trangThai).indexOf('tamngung')>=0;}).length;
@@ -328,7 +330,7 @@ function kpiHTML(rows){
   var wSum=0, wVal=0;
   rows.forEach(function(r){
     if(!r.lastReport) return;
-    var w = r.project.tongMucDauTu || 1;
+    var w = r.project.tongPhanKhai || 1;
     wSum += w; wVal += w * Math.min(100, Math.max(0, r.lastReport.tienDo));
   });
   var avgProgress = wSum ? wVal/wSum : 0;
@@ -339,10 +341,11 @@ function kpiHTML(rows){
 
   return '<div class="kpis">' +
     k('Tổng số dự án', ps.length, running+' đang thực hiện · '+done+' hoàn thành · '+paused+' tạm ngưng', C.blue, '📁', null) +
-    k('Tổng mức đầu tư', CPM.fmtShort(total), CPM.fmtVND(total)+' đồng', C.purple, '💰', null) +
+    k('Tổng KH vốn đã phân khai', CPM.fmtShort(total),
+      CPM.fmtVND(total)+' đ<br>'+nPK+'/'+ps.length+' dự án đã phân khai · TMĐT '+CPM.fmtShort(tmdt), C.purple, '💰', null) +
     k('Đã giải ngân', CPM.fmtShort(paid), CPM.fmtVND(paid)+' đồng', C.green, '💵', null) +
-    k('Tỷ lệ giải ngân', (ratio*100).toFixed(1)+'%', 'Còn lại '+CPM.fmtShort(total-paid), ratio>=.6?C.green:ratio>=.3?C.amber:C.red, '📊', ratio) +
-    k('Tiến độ thi công TB', avgProgress.toFixed(1)+'%', 'Trọng số theo tổng mức đầu tư', C.cyan, '🏗️', avgProgress/100) +
+    k('Tỷ lệ giải ngân', (ratio*100).toFixed(1)+'%', 'Trên vốn phân khai · còn lại '+CPM.fmtShort(total-paid), ratio>=.6?C.green:ratio>=.3?C.amber:C.red, '📊', ratio) +
+    k('Tiến độ thi công TB', avgProgress.toFixed(1)+'%', 'Trọng số theo vốn phân khai', C.cyan, '🏗️', avgProgress/100) +
     k('Trễ báo cáo (>'+CPM.CFG.reportDeadlineDays+' ngày)', overdue, overdue?'Cần nhắc nhở ngay':'Toàn bộ đúng hạn 👍', overdue?C.red:C.green, overdue?'⚠️':'✅', onTime) +
   '</div>';
 
@@ -410,7 +413,7 @@ function tableHTML(rows){
     switch(SORT.key){
       case 'maDA': return p.maDA;
       case 'tenDA': return p.tenDA;
-      case 'tongMucDauTu': return p.tongMucDauTu;
+      case 'tongPhanKhai': return p.tongPhanKhai;
       case 'soGiaiNgan': return p.soGiaiNgan;
       case 'tyLeGiaiNgan': return p.tyLeGiaiNgan;
       case 'tienDo': return r.lastReport? r.lastReport.tienDo : -1;
@@ -429,7 +432,7 @@ function tableHTML(rows){
     '<span class="tag">'+rows.length+' dự án</span></div>' +
     '<div class="tw"><table id="tblProj"><thead><tr>' +
       th('maDA','Mã') + th('tenDA','Tên dự án') + '<th>Phụ trách</th>' +
-      th('tongMucDauTu','Tổng mức ĐT','num') + th('soGiaiNgan','Đã giải ngân','num') +
+      th('tongPhanKhai','KH vốn phân khai','num') + th('soGiaiNgan','Đã giải ngân','num') +
       th('tyLeGiaiNgan','Tỷ lệ GN','ctr') + th('tienDo','Tiến độ TC','ctr') +
       '<th>Giai đoạn</th>' + th('trangThai','Trạng thái') + th('daysLate','Cập nhật BC','ctr') +
     '</tr></thead><tbody>' +
@@ -452,7 +455,9 @@ function rowHTML(r){
     '<td><span class="muted" style="font-size:12px">'+CPM.esc(p.maDA)+'</span></td>' +
     '<td style="min-width:250px"><b>'+CPM.esc(p.tenDA)+'</b><br><span class="muted" style="font-size:11.5px">'+CPM.esc(p.loaiDA)+' · '+CPM.esc(p.namThucHien)+'</span></td>' +
     '<td style="font-size:12.5px">'+CPM.esc(p.phuTrachKT||'—')+'<br><span class="muted">'+CPM.esc(p.phuTrachKeToan||'')+'</span></td>' +
-    '<td class="num">'+CPM.fmtVND(p.tongMucDauTu)+'</td>' +
+    '<td class="num">'+CPM.fmtVND(p.tongPhanKhai)+
+      (p.tongPhanKhai!==p.tongMucDauTu && p.tongMucDauTu>0
+        ? '<br><span class="muted" style="font-size:11px">TMĐT '+CPM.fmtVND(p.tongMucDauTu)+'</span>' : '')+'</td>' +
     '<td class="num">'+CPM.fmtVND(p.soGiaiNgan)+'</td>' +
     '<td class="ctr"><div style="display:flex;align-items:center;gap:7px;justify-content:flex-end">' +
       '<span style="font-weight:700;color:'+rc+'">'+(ratio*100).toFixed(0)+'%</span>' +
@@ -482,7 +487,7 @@ function staffHTML(rows){
       if(!map[k]) map[k]={hoTen:pair[0],vaiTro:{},projects:0,overdue:0,total:0,paid:0,reports:0};
       map[k].vaiTro[pair[1]]=1;
       map[k].projects++;
-      map[k].total += r.project.tongMucDauTu;
+      map[k].total += r.project.tongPhanKhai;
       map[k].paid  += r.project.soGiaiNgan;
       if(r.overdue) map[k].overdue++;
     });
@@ -503,7 +508,7 @@ function staffHTML(rows){
     '<h3>👥 Khối lượng công việc & mức độ tuân thủ báo cáo</h3>' +
     '<p class="sub">Theo từng cán bộ được phân công tại cột Phụ trách kỹ thuật / Phụ trách kế toán</p>' +
     '<div class="tw"><table><thead><tr><th>Cán bộ</th><th>Vai trò</th><th class="ctr">Số dự án</th>' +
-    '<th class="num">Giá trị quản lý</th><th class="num">Đã giải ngân</th><th class="ctr">Báo cáo đã nộp</th>' +
+    '<th class="num">KH vốn phân khai</th><th class="num">Đã giải ngân</th><th class="ctr">Báo cáo đã nộp</th>' +
     '<th class="ctr">Dự án trễ BC</th><th class="ctr">Mức tuân thủ</th></tr></thead><tbody>' +
     list.map(function(s){
       var ok = s.projects? (s.projects-s.overdue)/s.projects : 1;
@@ -564,12 +569,12 @@ function drawType(rows){
   kill('chType');
   var m={};
   rows.forEach(function(r){ var t=r.project.loaiDA||'Khác';
-    if(!m[t]) m[t]={dt:0,gn:0}; m[t].dt+=r.project.tongMucDauTu; m[t].gn+=r.project.soGiaiNgan; });
+    if(!m[t]) m[t]={dt:0,gn:0}; m[t].dt+=r.project.tongPhanKhai; m[t].gn+=r.project.soGiaiNgan; });
   var labels=Object.keys(m).sort(function(a,b){return m[b].dt-m[a].dt;});
   CHARTS.chType = new Chart(document.getElementById('chType'), {
     type:'bar',
     data:{ labels:labels, datasets:[
-      { label:'Tổng mức đầu tư', data:labels.map(function(l){return m[l].dt/1e9;}), backgroundColor:C.blue, borderRadius:5, maxBarThickness:40 },
+      { label:'KH vốn đã phân khai', data:labels.map(function(l){return m[l].dt/1e9;}), backgroundColor:C.blue, borderRadius:5, maxBarThickness:40 },
       { label:'Đã giải ngân',   data:labels.map(function(l){return m[l].gn/1e9;}), backgroundColor:C.green, borderRadius:5, maxBarThickness:40 }]},
     options:Object.assign({}, BASE, {
       scales:{ y:{ beginAtZero:true, ticks:{ font:{size:11}, callback:function(v){return v+' tỷ';} }, grid:{color:'#f1f5f9'} },
@@ -581,7 +586,7 @@ function drawType(rows){
 
 function drawRatio(rows){
   kill('chRatio');
-  var d = rows.filter(function(r){return r.project.tongMucDauTu>0;})
+  var d = rows.filter(function(r){return r.project.tongPhanKhai>0;})
     .sort(function(a,b){return b.project.tyLeGiaiNgan-a.project.tyLeGiaiNgan;}).slice(0,14);
   if(!d.length){ document.getElementById('chRatio').parentNode.innerHTML='<div class="loading">Chưa có dữ liệu</div>'; return; }
   var short=function(s){ return s.length>38? s.slice(0,36)+'…' : s; };
@@ -598,7 +603,8 @@ function drawRatio(rows){
         tooltip:{callbacks:{
           title:function(c){ return d[c[0].dataIndex].project.tenDA; },
           label:function(c){ var p=d[c.dataIndex].project;
-            return ['Tỷ lệ: '+c.parsed.x+'%','Tổng mức: '+CPM.fmtVND(p.tongMucDauTu)+' đ','Đã giải ngân: '+CPM.fmtVND(p.soGiaiNgan)+' đ']; }}} } })
+            return ['Tỷ lệ: '+c.parsed.x+'%','KH vốn phân khai: '+CPM.fmtVND(p.tongPhanKhai)+' đ',
+                    'Đã giải ngân: '+CPM.fmtVND(p.soGiaiNgan)+' đ','(Tổng mức ĐT: '+CPM.fmtVND(p.tongMucDauTu)+' đ)']; }}} } })
   });
 }
 
@@ -647,9 +653,10 @@ function openProject(maDA){
   var html =
     (p.moTa? '<p style="font-size:13.5px;line-height:1.65;background:#f8fafc;padding:12px 14px;border-radius:10px;margin:0 0 16px">'+CPM.esc(p.moTa)+'</p>':'') +
     '<div class="dl">' +
+      dt('KH vốn đã phân khai', CPM.fmtVND(p.tongPhanKhai)+' đ') +
       dt('Tổng mức đầu tư', CPM.fmtVND(p.tongMucDauTu)+' đ') +
       dt('Đã giải ngân', CPM.fmtVND(p.soGiaiNgan)+' đ') +
-      dt('Tỷ lệ giải ngân', (ratio*100).toFixed(1)+'%') +
+      dt('Tỷ lệ giải ngân', (ratio*100).toFixed(1)+'% trên vốn phân khai') +
       dt('Tiến độ thi công', prog+'%') +
       dt('Giai đoạn hiện tại', p.giaiDoan||'—') +
       dt('Thời gian', CPM.fmtDate(p.ngayBatDau)+' → '+CPM.fmtDate(p.ngayKetThuc)) +
@@ -662,12 +669,16 @@ function openProject(maDA){
       prBox('Thi công', prog/100, C.cyan) +
     '</div>' +
 
-    (srcRows.length? '<h4 class="blk">Cơ cấu nguồn vốn bố trí</h4><div class="tw" style="max-height:none"><table><tbody>' +
+    (srcRows.length? '<h4 class="blk">Cơ cấu KH vốn đã phân khai (cột L–P)</h4><div class="tw" style="max-height:none"><table><tbody>' +
       srcRows.map(function(k){
-        var v=p.nguonVon[k], tot=srcRows.reduce(function(a,x){return a+p.nguonVon[x];},0);
+        var v=p.nguonVon[k];
         return '<tr><td>'+k+'</td><td class="num"><b>'+CPM.fmtVND(v)+' đ</b></td>'+
-          '<td class="num muted" style="width:70px">'+(v/tot*100).toFixed(1)+'%</td></tr>';
-      }).join('') + '</tbody></table></div>' : '') +
+          '<td class="num muted" style="width:70px">'+(p.tongPhanKhai?(v/p.tongPhanKhai*100).toFixed(1):'0.0')+'%</td></tr>';
+      }).join('') +
+      '<tr style="background:#f8fafc"><td><b>Tổng phân khai</b></td>'+
+      '<td class="num"><b>'+CPM.fmtVND(p.tongPhanKhai)+' đ</b></td><td class="num muted">100%</td></tr>' +
+      '</tbody></table></div>'
+      : '<h4 class="blk">Cơ cấu KH vốn đã phân khai</h4><p class="muted">Dự án chưa được phân khai vốn ở cột L–P.</p>') +
 
     '<h4 class="blk">Tình hình cập nhật báo cáo</h4>' +
     '<div class="'+(st.overdue?'banner':'banner good')+'">' +
@@ -891,14 +902,20 @@ function showMailPane(kind){
 function exportCSV(){
   var rows = filtered();
   var head = ['Mã DA','Tên dự án','Loại','Năm','Trạng thái','Giai đoạn','Phụ trách KT','Phụ trách KT-KT',
-    'Tổng mức đầu tư','Đã giải ngân','Tỷ lệ giải ngân (%)','Tiến độ TC (%)','Báo cáo gần nhất','Số ngày từ BC gần nhất','Trễ hạn'];
+    'Tổng mức đầu tư','Chuẩn bị đầu tư (L)','NS tập trung (M)','Thu tiền SDĐ (N)','Tăng thu SDĐ tỉnh BS (O)','Vốn tỉnh XSKT (P)',
+    'TỔNG KH VỐN ĐÃ PHÂN KHAI','Đã giải ngân','Tỷ lệ GN trên vốn phân khai (%)','Tỷ lệ GN trên TMĐT (%)',
+    'Tiến độ TC (%)','Báo cáo gần nhất','Số ngày từ BC gần nhất','Trễ hạn'];
   var lines = [head.join(';')];
   rows.forEach(function(r){
-    var p=r.project;
+    var p=r.project, n=p.nguonVon;
     lines.push([
       p.maDA, q(p.tenDA), q(p.loaiDA), p.namThucHien, q(p.trangThai), q(p.giaiDoan),
       q(p.phuTrachKT), q(p.phuTrachKeToan),
-      Math.round(p.tongMucDauTu), Math.round(p.soGiaiNgan), (p.tyLeGiaiNgan*100).toFixed(1),
+      Math.round(p.tongMucDauTu),
+      Math.round(n['Chuẩn bị đầu tư']), Math.round(n['NS tập trung']), Math.round(n['Thu tiền SDĐ']),
+      Math.round(n['Tăng thu SDĐ tỉnh bổ sung']), Math.round(n['Vốn tỉnh (XSKT)']),
+      Math.round(p.tongPhanKhai), Math.round(p.soGiaiNgan),
+      (p.tyLeGiaiNgan*100).toFixed(1), (p.tyLeTheoTongMuc*100).toFixed(1),
       r.lastReport? r.lastReport.tienDo : '', r.lastDate? CPM.fmtDate(r.lastDate):'',
       r.daysLate==null?'':r.daysLate, r.overdue?'TRỄ':''
     ].join(';'));
