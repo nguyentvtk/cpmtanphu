@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1d4ed8">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Báo cáo ngày — Đầu tư công xã Tân Phú</title>
+<style>
+:root{
+  --brand:#1d4ed8; --brand-d:#1740b8; --brand-l:#eff6ff;
+  --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9;
+  --ok:#059669; --warn:#d97706; --bad:#dc2626;
+  --r:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-family:Inter,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);
+  font-size:16px;line-height:1.5;padding-bottom:env(safe-area-inset-bottom)}
+.wrap{max-width:680px;margin:0 auto;padding:0 14px 40px}
+
+header{background:linear-gradient(120deg,#0f2557,#1d4ed8 60%,#0891b2);color:#fff;
+  padding:calc(18px + env(safe-area-inset-top)) 0 52px;text-align:center}
+header h1{margin:0;font-size:20px;font-weight:800;letter-spacing:-.3px}
+header p{margin:5px 0 0;font-size:13px;opacity:.86}
+
+.card{background:#fff;border-radius:var(--r);box-shadow:0 1px 3px rgba(15,23,42,.06),0 10px 28px -14px rgba(15,23,42,.18);
+  padding:18px 16px;margin-bottom:14px}
+.card:first-of-type{margin-top:-38px}
+.card h2{margin:0 0 3px;font-size:15px;font-weight:800}
+.card .sub{margin:0 0 14px;font-size:13px;color:var(--muted)}
+
+.step{display:flex;align-items:center;gap:9px;margin-bottom:13px}
+.step i{width:26px;height:26px;border-radius:8px;background:var(--brand);color:#fff;display:grid;place-items:center;
+  font-size:13px;font-weight:800;font-style:normal;flex:none}
+
+label.lb{display:block;font-size:13px;font-weight:700;margin:0 0 6px}
+label.lb .req{color:var(--bad)}
+label.lb .hint{font-weight:500;color:var(--muted);font-size:12px}
+
+select,input,textarea{width:100%;padding:13px 12px;border:1.5px solid var(--line);border-radius:11px;
+  font-size:16px;font-family:inherit;background:#fff;color:var(--ink);appearance:none}
+select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 13px center;padding-right:38px}
+select:focus,input:focus,textarea:focus{outline:0;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-l)}
+select.big{font-size:17px;font-weight:600;padding:15px 12px;padding-right:38px}
+textarea{min-height:82px;resize:vertical;line-height:1.55}
+.fld{margin-bottom:15px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:400px){.row2{grid-template-columns:1fr}}
+
+/* Chips chọn nhanh */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid var(--line);background:#fff;border-radius:11px;padding:11px 15px;font-size:14.5px;
+  font-weight:600;cursor:pointer;font-family:inherit;color:var(--ink);transition:.12s;flex:1;min-width:88px;text-align:center}
+.chip:hover{border-color:#cbd5e1}
+.chip.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.chip.on.ok{background:var(--ok);border-color:var(--ok)}
+.chip.on.warn{background:var(--warn);border-color:var(--warn)}
+.chip.on.bad{background:var(--bad);border-color:var(--bad)}
+
+/* Slider tiến độ */
+.prog-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.prog-val{font-size:30px;font-weight:800;color:var(--brand);letter-spacing:-1px;font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;width:100%;height:34px;background:transparent;padding:0;border:0;box-shadow:none}
+input[type=range]:focus{outline:0;box-shadow:none}
+input[type=range]::-webkit-slider-runnable-track{height:10px;border-radius:99px;background:#e2e8f0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;border-radius:50%;background:var(--brand);
+  border:4px solid #fff;box-shadow:0 2px 8px rgba(29,78,216,.45);margin-top:-10px;cursor:pointer}
+input[type=range]::-moz-range-track{height:10px;border-radius:99px;background:#e2e8f0}
+input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:var(--brand);border:4px solid #fff;
+  box-shadow:0 2px 8px rgba(29,78,216,.45);cursor:pointer}
+.ticks{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:-4px}
+
+/* Thông tin dự án */
+.pinfo{background:var(--brand-l);border-radius:12px;padding:13px 14px;margin-bottom:15px;font-size:13.5px;display:none}
+.pinfo.on{display:block}
+.pinfo b{color:var(--brand)}
+.pinfo .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px;margin-top:9px}
+.pinfo .grid div{background:rgba(255,255,255,.75);border-radius:9px;padding:8px 10px}
+.pinfo .grid span{display:block;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.pinfo .grid b{display:block;font-size:14px;margin-top:2px}
+.warnbox{background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:11px;padding:11px 13px;
+  font-size:13px;margin-bottom:14px}
+.warnbox.bad{background:#fee2e2;border-color:#fecaca;color:#991b1b}
+.warnbox.ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+
+/* Nút */
+.btn{width:100%;border:0;border-radius:12px;padding:16px;font-size:16.5px;font-weight:800;font-family:inherit;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;transition:.15s}
+.btn-p{background:var(--brand);color:#fff;box-shadow:0 4px 14px rgba(29,78,216,.3)}
+.btn-p:hover:not(:disabled){background:var(--brand-d)}
+.btn-p:disabled{background:#94a3b8;box-shadow:none;cursor:not-allowed}
+.btn-o{background:#fff;color:var(--ink);border:1.5px solid var(--line);box-shadow:none;font-size:15px;padding:13px}
+.btn-o:hover{background:#f8fafc}
+
+/* Lịch sử */
+.hist{border-top:1px solid var(--line);margin-top:6px;padding-top:12px}
+.hist-item{display:flex;gap:11px;padding:10px 0;border-bottom:1px solid #f1f5f9;font-size:13.5px}
+.hist-item:last-child{border-bottom:0}
+.hist-d{flex:none;width:60px;font-size:12px;color:var(--muted);font-weight:700;padding-top:2px}
+.hist-b{flex:1;min-width:0}
+.hist-b b{display:block;font-weight:600;font-size:13.5px}
+.hist-b small{color:var(--muted);font-size:12px}
+.badge{display:inline-block;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:800}
+.b-ok{background:#d1fae5;color:#065f46}.b-warn{background:#fef3c7;color:#92400e}
+.b-bad{background:#fee2e2;color:#991b1b}.b-n{background:#f1f5f9;color:#475569}
+
+/* Trạng thái */
+.state{text-align:center;padding:40px 16px;color:var(--muted)}
+.spin{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--brand);border-radius:50%;
+  animation:sp .8s linear infinite;margin:0 auto 12px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.msg{border-radius:12px;padding:13px 15px;font-size:14px;margin-top:14px;display:none;font-weight:600}
+.msg.on{display:block}
+.msg.ok{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46}
+.msg.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+
+/* Màn hình thành công */
+#done{display:none;text-align:center;padding:34px 18px}
+#done.on{display:block}
+#done .tick{width:76px;height:76px;border-radius:50%;background:#d1fae5;color:var(--ok);display:grid;place-items:center;
+  font-size:42px;margin:0 auto 18px;animation:pop .4s cubic-bezier(.34,1.56,.64,1)}
+@keyframes pop{from{transform:scale(.4);opacity:0}}
+#done h2{margin:0 0 8px;font-size:20px;color:var(--ok)}
+#done p{margin:0 0 22px;color:var(--muted);font-size:14.5px}
+
+footer{text-align:center;font-size:12px;color:var(--muted);padding:18px 14px 8px;line-height:1.7}
+.offline{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));background:#0f172a;color:#fff;
+  border-radius:12px;padding:12px 15px;font-size:13.5px;display:none;z-index:50;
+  box-shadow:0 8px 26px rgba(0,0,0,.3);align-items:center;gap:11px}
+.offline.on{display:flex}
+.offline button{background:#fff;color:#0f172a;border:0;border-radius:8px;padding:7px 13px;font-weight:700;font-size:13px;cursor:pointer;flex:none}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📝 Báo cáo tiến độ hằng ngày</h1>
+  <p>Ban Quản lý Dự án — Xã Tân Phú</p>
+</header>
+
+<div class="wrap">
+
+  <div id="loading" class="card"><div class="state"><div class="spin"></div>Đang tải danh sách dự án…</div></div>
+
+  <div id="form" style="display:none">
+
+    <!-- BƯỚC 1 -->
+    <div class="card">
+      <div class="step"><i>1</i><div><h2>Người báo cáo</h2>
+        <p class="sub" style="margin:0">Chọn tên của bạn — hệ thống tự lọc đúng các dự án bạn phụ trách.</p></div></div>
+      <select id="who" class="big"><option value="">— Chọn tên của bạn —</option></select>
+      <div id="whoInfo" class="pinfo" style="margin-top:13px"></div>
+    </div>
+
+    <!-- BƯỚC 2 -->
+    <div class="card" id="cardProj" style="display:none">
+      <div class="step"><i>2</i><div><h2>Dự án báo cáo</h2>
+        <p class="sub" style="margin:0"><span id="projCount"></span></p></div></div>
+      <select id="proj" class="big"><option value="">— Chọn dự án —</option></select>
+      <div id="projInfo" class="pinfo"></div>
+      <div id="lastWarn"></div>
+      <div id="hist"></div>
+    </div>
+
+    <!-- BƯỚC 3 -->
+    <div class="card" id="cardData" style="display:none">
+      <div class="step"><i>3</i><div><h2>Nội dung báo cáo</h2>
+        <p class="sub" style="margin:0">Các mục có dấu <span style="color:var(--bad)">*</span> là bắt buộc.</p></div></div>
+
+      <div class="fld">
+        <label class="lb" for="ngay">Ngày báo cáo <span class="req">*</span></label>
+        <input type="date" id="ngay" required>
+      </div>
+
+      <div class="fld" id="fldCT" style="display:none">
+        <label class="lb" for="maCT">Công tác theo kế hoạch <span class="hint">(chọn để tự điền hạng mục)</span></label>
+        <select id="maCT"><option value="">— Không gắn công tác cụ thể —</option></select>
+      </div>
+
+      <div class="fld">
+        <label class="lb" for="hangMuc">Hạng mục thi công <span class="req">*</span></label>
+        <textarea id="hangMuc" required placeholder="VD: Đắp sỏi đỏ nền đường bằng máy lu bánh thép 16 tấn, độ chặt K≥0,98"></textarea>
+      </div>
+
+      <div class="fld">
+        <div class="prog-head">
+          <label class="lb" for="tienDo" style="margin:0">Tiến độ thi công <span class="req">*</span></label>
+          <span class="prog-val"><span id="tienDoVal">0</span>%</span>
+        </div>
+        <input type="range" id="tienDo" min="0" max="100" step="1" value="0">
+        <div class="ticks"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+      </div>
+
+      <div class="row2">
+        <div class="fld">
+          <label class="lb" for="congNhan">Số công nhân</label>
+          <input type="number" id="congNhan" min="0" inputmode="numeric" placeholder="VD: 8">
+        </div>
+        <div class="fld">
+          <label class="lb" for="giaiNgan">Giải ngân <span class="hint">(tr.đ)</span></label>
+          <input type="text" id="giaiNgan" inputmode="decimal" placeholder="VD: 2.4">
+        </div>
+      </div>
+
+      <div class="fld">
+        <label class="lb">Thời tiết</label>
+        <div class="chips" data-group="thoiTiet">
+          <button type="button" class="chip" data-v="Nắng">☀️ Nắng</button>
+          <button type="button" class="chip" data-v="Âm u">☁️ Âm u</button>
+          <button type="button" class="chip" data-v="Mưa">🌧️ Mưa</button>
+        </div>
+      </div>
+
+      <div class="fld">
+        <label class="lb">Kiểm định chất lượng</label>
+        <div class="chips" data-group="chatLuong">
+          <button type="button" class="chip ok" data-v="Đạt">✔ Đạt</button>
+          <button type="button" class="chip warn" data-v="Đạt có điều kiện">◐ Đạt có ĐK</button>
+          <button type="button" class="chip bad" data-v="Không đạt">✖ Không đạt</button>
+        </div>
+      </div>
+
+      <div class="fld">
+        <label class="lb" for="vuongMac">Khó khăn, vướng mắc</label>
+        <textarea id="vuongMac" placeholder="Ghi &quot;Không có&quot; nếu công trường thuận lợi"></textarea>
+      </div>
+
+      <div class="fld">
+        <label class="lb" for="hinhAnh">Link hình ảnh hiện trường <span class="hint">(Google Drive, ibb.co…)</span></label>
+        <input type="url" id="hinhAnh" inputmode="url" placeholder="https://…">
+      </div>
+
+      <div class="fld">
+        <label class="lb" for="ghiChu">Ghi chú thêm</label>
+        <textarea id="ghiChu" placeholder="VD: đảm bảo tiến độ cam kết"></textarea>
+      </div>
+
+      <button class="btn btn-p" id="btnSend">📤 Gửi báo cáo</button>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+
+  <!-- MÀN HÌNH THÀNH CÔNG -->
+  <div id="done" class="card">
+    <div class="tick">✓</div>
+    <h2>Đã gửi báo cáo thành công!</h2>
+    <p id="doneInfo"></p>
+    <button class="btn btn-p" id="btnAgain">📝 Báo cáo dự án khác</button>
+    <button class="btn btn-o" id="btnDoneClose" style="margin-top:10px">Xong</button>
+  </div>
+
+  <footer>
+    Hệ thống Quản lý Dự án Đầu tư công (CPM) — xã Tân Phú<br>
+    Dữ liệu được ghi trực tiếp vào sheet <b>Báo cáo</b>, đồng bộ với
+    <a href="https://cpmtanphu.vercel.app/" target="_blank" rel="noopener">cpmtanphu.vercel.app</a>
+  </footer>
+</div>
+
+<div class="offline" id="offline">
+  <span id="offlineTxt">Có báo cáo chưa gửi được.</span>
+  <button id="btnRetry">Gửi lại</button>
+</div>
+
+<script src="assets/js/cpm-core.js"></script>
+<script>
+'use strict';
+var D = { projects:[], staff:[], reports:[], gantt:[] };
+var MY = null;          // nhân sự đang chọn
+var MYPROJ = [];        // dự án của người đó
+var CUR = null;         // dự án đang chọn
+var QUEUE_KEY = 'cpm_report_queue';
+
+var $ = function(id){ return document.getElementById(id); };
+
+// ═══════════ TẢI DỮ LIỆU ═══════════
+CPM.loadAll(true).then(function(d){
+  D = d;
+  $('loading').style.display='none';
+  $('form').style.display='';
+  initWho();
+  flushQueue();
+}).catch(function(e){
+  $('loading').innerHTML =
+    '<div class="state" style="color:var(--bad)"><div style="font-size:36px;margin-bottom:10px">⚠️</div>' +
+    '<b>Không tải được danh sách dự án</b><div style="margin-top:8px;font-size:13.5px">'+CPM.esc(e.message||e)+'</div>' +
+    '<button class="btn btn-o" style="margin-top:16px" onclick="location.reload()">Thử lại</button></div>';
+});
+
+// ═══════════ BƯỚC 1: NGƯỜI BÁO CÁO ═══════════
+function initWho(){
+  // Chỉ hiện những người thực sự có tên tại cột Phụ trách kỹ thuật / kế toán
+  var owners = [];
+  D.projects.forEach(function(p){
+    [p.phuTrachKT, p.phuTrachKeToan].forEach(function(n){
+      if(n && !owners.some(function(x){return CPM.sameName(x,n);})) owners.push(n);
+    });
+  });
+
+  var sel = $('who');
+  owners.sort(function(a,b){return a.localeCompare(b,'vi');}).forEach(function(name){
+    var st = D.staff.find(function(s){return CPM.sameName(s.hoTen,name);});
+    var n  = CPM.projectsOf(D.projects, name).length;
+    var o = document.createElement('option');
+    o.value = name;
+    o.textContent = name + (st && st.chucVu ? ' — ' + st.chucVu : '') + '  (' + n + ' dự án)';
+    sel.appendChild(o);
+  });
+
+  // Nhớ lựa chọn lần trước
+  try {
+    var saved = localStorage.getItem('cpm_last_who');
+    if(saved && owners.some(function(x){return CPM.sameName(x,saved);})){ sel.value = saved; }
+  } catch(e){}
+
+  sel.addEventListener('change', pickWho);
+  if(sel.value) pickWho();
+}
+
+function pickWho(){
+  var name = $('who').value;
+  CUR = null;
+  $('cardData').style.display='none';
+  $('projInfo').className='pinfo';
+  $('lastWarn').innerHTML=''; $('hist').innerHTML='';
+
+  if(!name){ $('cardProj').style.display='none'; $('whoInfo').className='pinfo'; return; }
+  try { localStorage.setItem('cpm_last_who', name); } catch(e){}
+
+  MY = D.staff.find(function(s){return CPM.sameName(s.hoTen,name);}) || { hoTen:name, maNV:'', chucVu:'', email:'' };
+  MYPROJ = CPM.projectsOf(D.projects, name);
+
+  // Tổng quan tình trạng báo cáo của người này
+  var st = CPM.computeReportStatus(MYPROJ, D.reports, D.staff, new Date());
+  var late = st.filter(function(s){return s.overdue;});
+
+  $('whoInfo').className='pinfo on';
+  $('whoInfo').innerHTML =
+    'Xin chào <b>'+CPM.esc(MY.hoTen)+'</b>'+(MY.chucVu?' · '+CPM.esc(MY.chucVu):'')+
+    '<div class="grid">'+
+      '<div><span>Dự án phụ trách</span><b>'+MYPROJ.length+'</b></div>'+
+      '<div><span>Cần báo cáo</span><b>'+st.filter(function(s){return s.mustReport;}).length+'</b></div>'+
+      '<div><span>Đang trễ hạn</span><b style="color:'+(late.length?'var(--bad)':'var(--ok)')+'">'+late.length+'</b></div>'+
+    '</div>' +
+    (late.length? '<div style="margin-top:10px;font-size:13px;color:#991b1b"><b>Ưu tiên báo cáo:</b> '+
+      late.slice(0,4).map(function(s){return CPM.esc(s.project.tenDA)+' ('+s.daysLate+'n)';}).join(' · ')+
+      (late.length>4?' …':'')+'</div>' : '');
+
+  // Nạp dropdown dự án — dự án trễ hạn xếp lên đầu
+  var sel = $('proj');
+  sel.innerHTML = '<option value="">— Chọn dự án —</option>';
+  st.slice().sort(function(a,b){
+    if(a.overdue!==b.overdue) return a.overdue? -1 : 1;
+    return (b.daysLate||0)-(a.daysLate||0);
+  }).forEach(function(s){
+    var o=document.createElement('option');
+    o.value = s.project.maDA;
+    o.textContent = (s.overdue? '🔴 ' : s.mustReport? '🟢 ' : '⚪ ') + s.project.tenDA;
+    sel.appendChild(o);
+  });
+  $('projCount').textContent = MYPROJ.length + ' dự án bạn phụ trách · 🔴 trễ hạn, 🟢 trong hạn, ⚪ chưa triển khai/đã xong';
+  $('cardProj').style.display='';
+  sel.value='';
+}
+$('proj') && $('proj').addEventListener('change', pickProject);
+
+// ═══════════ BƯỚC 2: DỰ ÁN ═══════════
+function pickProject(){
+  var ma = $('proj').value;
+  CUR = D.projects.find(function(p){return p.maDA===ma;}) || null;
+  if(!CUR){ $('cardData').style.display='none'; $('projInfo').className='pinfo'; $('lastWarn').innerHTML=''; $('hist').innerHTML=''; return; }
+
+  var reps = D.reports.filter(function(r){return r.maDA===ma;})
+    .sort(function(a,b){return (b.ngay?b.ngay.getTime():0)-(a.ngay?a.ngay.getTime():0);});
+  var last = reps[0] || null;
+  var days = last && last.ngay ? CPM.daysBetween(last.ngay, new Date()) : null;
+
+  $('projInfo').className='pinfo on';
+  $('projInfo').innerHTML =
+    '<b>'+CPM.esc(CUR.tenDA)+'</b> <span style="color:var(--muted)">#'+CPM.esc(CUR.maDA)+'</span>' +
+    (CUR.moTa? '<div style="margin-top:5px;font-size:12.5px;color:#334155">'+CPM.esc(CUR.moTa)+'</div>':'') +
+    '<div class="grid">'+
+      '<div><span>Trạng thái</span><b style="font-size:13px">'+CPM.esc(CUR.trangThai)+'</b></div>'+
+      '<div><span>Giai đoạn</span><b style="font-size:13px">'+CPM.esc(CUR.giaiDoan||'—')+'</b></div>'+
+      '<div><span>Tổng mức ĐT</span><b style="font-size:13px">'+CPM.fmtShort(CUR.tongMucDauTu)+'</b></div>'+
+      '<div><span>Tiến độ gần nhất</span><b>'+(last? last.tienDo+'%' : '—')+'</b></div>'+
+    '</div>';
+
+  // Cảnh báo hạn báo cáo
+  var wb='';
+  if(!last){
+    wb = '<div class="warnbox">📌 Dự án này <b>chưa có báo cáo nào</b>. Đây sẽ là báo cáo đầu tiên.</div>';
+  } else if(days > CPM.CFG.reportDeadlineDays){
+    wb = '<div class="warnbox bad">⚠️ Đã <b>'+days+' ngày</b> kể từ báo cáo gần nhất ('+CPM.fmtDate(last.ngay)+
+         ') — vượt mốc quy định '+CPM.CFG.reportDeadlineDays+' ngày. Vui lòng cập nhật ngay.</div>';
+  } else {
+    wb = '<div class="warnbox ok">✅ Báo cáo gần nhất cách đây '+days+' ngày ('+CPM.fmtDate(last.ngay)+') — vẫn trong hạn.</div>';
+  }
+  $('lastWarn').innerHTML = wb;
+
+  // Lịch sử 5 báo cáo gần nhất
+  $('hist').innerHTML = reps.length
+    ? '<div class="hist"><div style="font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">'+
+      reps.length+' báo cáo gần đây</div>' +
+      reps.slice(0,5).map(function(r){
+        var q=CPM.norm(r.chatLuong);
+        var qc = q.indexOf('khong')>=0?'b-bad' : q.indexOf('dieukien')>=0?'b-warn' : r.chatLuong?'b-ok':'b-n';
+        return '<div class="hist-item"><div class="hist-d">'+CPM.fmtDate(r.ngay).slice(0,5)+'</div>' +
+          '<div class="hist-b"><b>'+CPM.esc(r.hangMuc||'—')+'</b>' +
+          '<small>'+ (r.tienDo||0) +'% · '+(r.congNhan||0)+' công nhân · '+CPM.esc(r.thoiTiet||'—')+' ' +
+          '<span class="badge '+qc+'">'+CPM.esc(r.chatLuong||'—')+'</span></small></div></div>';
+      }).join('') + '</div>'
+    : '';
+
+  // Công tác Gantt của dự án
+  var tasks = D.gantt.filter(function(g){return g.maDA===ma && g.tenCT;});
+  var selCT = $('maCT');
+  selCT.innerHTML = '<option value="">— Không gắn công tác cụ thể —</option>';
+  tasks.forEach(function(t){
+    var o=document.createElement('option');
+    o.value=t.maCT; o.dataset.ten=t.tenCT;
+    o.textContent = t.tenCT + (t.ngayBatDau? '  ('+CPM.fmtDate(t.ngayBatDau).slice(0,5)+'→'+CPM.fmtDate(t.ngayKetThuc).slice(0,5)+')' : '');
+    selCT.appendChild(o);
+  });
+  $('fldCT').style.display = tasks.length? '' : 'none';
+
+  // Gợi ý tiến độ = tiến độ lần trước
+  setProgress(last? Math.max(0,Math.min(100,last.tienDo)) : 0);
+  $('cardData').style.display='';
+  $('cardData').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+$('maCT').addEventListener('change', function(){
+  var o=this.selectedOptions[0];
+  if(o && o.value && o.dataset.ten && !$('hangMuc').value.trim()) $('hangMuc').value = o.dataset.ten;
+});
+
+// ═══════════ BƯỚC 3: FORM ═══════════
+$('ngay').value = CPM.toISO(new Date());
+$('ngay').max   = CPM.toISO(new Date());
+
+function setProgress(v){ $('tienDo').value = v; $('tienDoVal').textContent = v; }
+$('tienDo').addEventListener('input', function(){ $('tienDoVal').textContent = this.value; });
+
+document.querySelectorAll('.chips').forEach(function(g){
+  g.addEventListener('click', function(e){
+    var b = e.target.closest('.chip'); if(!b) return;
+    var on = b.classList.contains('on');
+    g.querySelectorAll('.chip').forEach(function(x){ x.classList.remove('on'); });
+    if(!on) b.classList.add('on');
+  });
+});
+function chipVal(group){
+  var b = document.querySelector('.chips[data-group="'+group+'"] .chip.on');
+  return b? b.dataset.v : '';
+}
+function chipReset(){ document.querySelectorAll('.chip.on').forEach(function(b){ b.classList.remove('on'); }); }
+
+// ═══════════ GỬI BÁO CÁO ═══════════
+$('btnSend').addEventListener('click', function(){
+  var msg = $('msg');
+  msg.className='msg';
+
+  if(!CUR)                        return fail('Vui lòng chọn dự án.');
+  if(!$('ngay').value)            return fail('Vui lòng chọn ngày báo cáo.');
+  if(!$('hangMuc').value.trim())  return fail('Vui lòng nhập hạng mục thi công.');
+
+  var payload = {
+    date:              toDMY($('ngay').value),
+    maDA:              CUR.maDA,
+    tenDA:             CUR.tenDA,
+    maNV:              MY.maNV || '',
+    maCT:              $('maCT').value || '',
+    workItem:          $('hangMuc').value.trim(),
+    progressPercent:   $('tienDo').value,
+    disbursementAmount:$('giaiNgan').value.trim(),
+    issues:            $('vuongMac').value.trim(),
+    imageUri:          $('hinhAnh').value.trim(),
+    weather:           chipVal('thoiTiet'),
+    laborCount:        $('congNhan').value,
+    qualityInspection: chipVal('chatLuong'),
+    notes:             $('ghiChu').value.trim()
+  };
+
+  var btn = $('btnSend');
+  btn.disabled = true; btn.innerHTML = '⏳ Đang gửi…';
+
+  CPM.create('baocao', payload).then(function(){
+    showDone(payload);
+  }).catch(function(e){
+    enqueue(payload);
+    fail('Gửi không thành công: ' + (e.message||e) + '. Báo cáo đã được lưu tạm trên máy, hệ thống sẽ tự gửi lại khi có mạng.');
+    renderQueue();
+  }).finally(function(){
+    btn.disabled = false; btn.innerHTML = '📤 Gửi báo cáo';
+  });
+
+  function fail(t){ msg.className='msg err on'; msg.textContent='⚠️ '+t; msg.scrollIntoView({behavior:'smooth',block:'center'}); }
+});
+
+function toDMY(iso){
+  var p = String(iso).split('-');
+  return p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : iso;
+}
+
+function showDone(payload){
+  $('form').style.display='none';
+  $('done').classList.add('on');
+  $('doneInfo').innerHTML =
+    '<b>'+CPM.esc(payload.tenDA)+'</b><br>' +
+    'Ngày '+CPM.esc(payload.date)+' · Tiến độ '+CPM.esc(payload.progressPercent)+'%<br>' +
+    '<span style="font-size:13px">Báo cáo đã được ghi vào hệ thống và hiển thị ngay trên Dashboard của Lãnh đạo.</span>';
+  CPM.cacheClear('baocao');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+$('btnAgain').addEventListener('click', function(){
+  $('done').classList.remove('on');
+  $('form').style.display='';
+  // Giữ nguyên người báo cáo, reset phần nội dung
+  ['hangMuc','vuongMac','hinhAnh','ghiChu','congNhan','giaiNgan'].forEach(function(id){ $(id).value=''; });
+  chipReset();
+  $('proj').value=''; CUR=null;
+  $('cardData').style.display='none';
+  $('projInfo').className='pinfo'; $('lastWarn').innerHTML=''; $('hist').innerHTML='';
+  // Tải lại báo cáo mới nhất để lịch sử luôn đúng
+  CPM.list('baocao', false).then(function(rs){ D.reports = rs.map(CPM.mapReport); }).catch(function(){});
+  $('cardProj').scrollIntoView({behavior:'smooth',block:'start'});
+});
+$('btnDoneClose').addEventListener('click', function(){ location.reload(); });
+
+// ═══════════ HÀNG ĐỢI OFFLINE ═══════════
+function getQueue(){ try{ return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]'); }catch(e){ return []; } }
+function setQueue(q){ try{ localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); }catch(e){} }
+function enqueue(p){ var q=getQueue(); q.push(p); setQueue(q); }
+
+function renderQueue(){
+  var q=getQueue(), el=$('offline');
+  if(!q.length){ el.classList.remove('on'); return; }
+  $('offlineTxt').textContent = q.length + ' báo cáo chưa gửi được, đang chờ.';
+  el.classList.add('on');
+}
+function flushQueue(){
+  var q=getQueue();
+  if(!q.length){ renderQueue(); return Promise.resolve(); }
+  var rest=[];
+  return q.reduce(function(chain,p){
+    return chain.then(function(){
+      return CPM.create('baocao',p).catch(function(){ rest.push(p); });
+    });
+  }, Promise.resolve()).then(function(){
+    setQueue(rest); renderQueue();
+    if(q.length && !rest.length){
+      var m=$('msg'); m.className='msg ok on'; m.textContent='✅ Đã gửi thành công '+q.length+' báo cáo lưu tạm trước đó.';
+    }
+  });
+}
+$('btnRetry').addEventListener('click', flushQueue);
+window.addEventListener('online', flushQueue);
+renderQueue();
+</script>
+</body>
+</html>
