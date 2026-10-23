@@ -587,6 +587,14 @@
         <i class="bi bi-calculator"></i>
         <span>Quyết toán DAHT</span>
       </a>
+      <a href="dashboard.html" target="_blank" rel="noopener" class="nav-link ">
+        <i class="bi bi-bar-chart-steps"></i>
+        <span>Dashboard Điều hành</span>
+      </a>
+      <a href="https://e-sign-files.vercel.app/" target="_blank" rel="noopener" class="nav-link ">
+        <i class="bi bi-shield-check"></i>
+        <span>Hồ sơ điện tử (eSign)</span>
+      </a>
     </div>
 
     <!-- Hỗ trợ kỹ thuật -->
@@ -930,18 +938,20 @@
         );
 
         if (!isManager && userProfile && userProfile.hoTen) {
-          const hoTenClean = userProfile.hoTen.trim().toLowerCase();
+          const normName = s => String(s || '').normalize('NFC').trim().toLowerCase();
+          const hoTenClean = normName(userProfile.hoTen);
           
           // Lọc dự án được giao
           allData.projects = allData.projects.filter(p => {
-            const phuTrachKT = String(p.phuTrachKT || '').trim().toLowerCase();
-            const phuTrachKeToan = String(p.phuTrachKeToan || '').trim().toLowerCase();
-            return phuTrachKT.includes(hoTenClean) || phuTrachKeToan.includes(hoTenClean) || hoTenClean.includes(phuTrachKT) || hoTenClean.includes(phuTrachKeToan);
+            const phuTrachKT = normName(p.phuTrachKT);
+            const phuTrachKeToan = normName(p.phuTrachKeToan);
+            return (phuTrachKT && (phuTrachKT.includes(hoTenClean) || hoTenClean.includes(phuTrachKT))) ||
+                   (phuTrachKeToan && (phuTrachKeToan.includes(hoTenClean) || hoTenClean.includes(phuTrachKeToan)));
           });
 
           // Lọc nhiệm vụ được giao
           allData.tasks = allData.tasks.filter(t => {
-            const nguoiThucHien = String(t.nguoiThucHien || '').trim().toLowerCase();
+            const nguoiThucHien = normName(t.nguoiThucHien);
             return nguoiThucHien === hoTenClean;
           });
 
@@ -1124,11 +1134,12 @@
 
         const isManager = (userProfile.role && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.role)) ||
                           (userProfile.chucVu && /admin|giám đốc|quản lý|trưởng phòng/i.test(userProfile.chucVu));
-        const hoTenClean = (userProfile.hoTen || '').trim().toLowerCase();
+        const normName = s => String(s || '').normalize('NFC').trim().toLowerCase();
+        const hoTenClean = normName(userProfile.hoTen);
 
         // 1. Phân tích Nhiệm vụ (Trễ hạn & Mới giao)
         tasks.forEach(t => {
-          const isAssignedToMe = String(t.nguoiThucHien || '').trim().toLowerCase() === hoTenClean;
+          const isAssignedToMe = normName(t.nguoiThucHien) === hoTenClean;
           
           if (t.trangThai !== 'Đã xong' && t.trangThai !== 'Đã hoàn thành' && t.hanChot) {
             const dueDate = new Date(t.hanChot);

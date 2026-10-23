@@ -160,6 +160,8 @@ pre.mail{background:#0f172a;color:#e2e8f0;padding:16px;border-radius:10px;font-s
       </div>
       <div class="tb-actions">
         <span class="stamp" id="stamp"></span>
+        <a class="btn btn-ghost" href="https://e-sign-files.vercel.app/" target="_blank" rel="noopener" style="text-decoration:none" title="Mở Hệ thống Hồ sơ công trình điện tử (eSign)">🔏 Hồ sơ điện tử</a>
+        <button class="btn btn-ghost" id="btnEsignCfg" title="Cấu hình kết nối API Hồ sơ công trình điện tử">⚙️ Kết nối eSign</button>
         <button class="btn btn-ghost" id="btnReload">↻ Làm mới</button>
         <button class="btn btn-ghost" id="btnCsv">⬇ Xuất CSV</button>
         <button class="btn btn-ghost" onclick="window.print()">🖨 In</button>
@@ -339,6 +341,40 @@ function kpiHTML(rows){
   var mustRep = rows.filter(function(r){return r.mustReport;}).length;
   var onTime  = mustRep ? (mustRep-overdue)/mustRep : 1;
 
+  // Chỉ số Hồ sơ công trình điện tử (eSign.Files) — không bao giờ giả lập số liệu
+  var es = DATA.esign || { available: false, byCanonical: {} };
+  var esKpi = '';
+  if (es.available && es.totals) {
+    var filteredCanonicals = new Set(ps.map(function(p){ return p.maDA; }));
+    var matchedEsign = (es.projects || []).filter(function(ep){
+      return filteredCanonicals.has(String(ep.canonical_id || ep.ma_du_an || ''));
+    });
+    var esDocs = matchedEsign.reduce(function(a, ep){ return a + (ep.total_docs || 0); }, 0);
+    var esSigned = matchedEsign.reduce(function(a, ep){ return a + (ep.signed_docs || 0); }, 0);
+    var esPending = matchedEsign.reduce(function(a, ep){ return a + (ep.pending_sign_docs || 0); }, 0);
+    var esChecklistAvg = matchedEsign.length
+      ? matchedEsign.reduce(function(a, ep){ return a + (ep.checklist_completion_pct || 0); }, 0) / matchedEsign.length
+      : (es.totals.avg_checklist_completion_pct || 0);
+    var pmsPending = es.totals.pending_pms_submissions || 0;
+    esKpi = k(
+      'Hồ sơ công trình ĐT',
+      esChecklistAvg.toFixed(0) + '%',
+      esSigned + '/' + esDocs + ' đã ký số · ' + esPending + ' chờ ký' + (pmsPending ? ' · ' + pmsPending + ' PMS chờ duyệt' : ''),
+      esChecklistAvg >= 70 ? C.green : esChecklistAvg >= 35 ? C.teal : C.amber,
+      '🔏',
+      esChecklistAvg / 100
+    );
+  } else {
+    esKpi = k(
+      'Hồ sơ công trình ĐT',
+      'eSign',
+      '<a href="' + CPM.esc(CPM.CFG.esignApiUrl) + '" target="_blank" rel="noopener">Mở kho hồ sơ pháp lý</a> · <a href="javascript:void(0)" onclick="promptEsignCfg()">Kết nối API</a>',
+      C.teal,
+      '🔏',
+      null
+    );
+  }
+
   return '<div class="kpis">' +
     k('Tổng số dự án', ps.length, running+' đang thực hiện · '+done+' hoàn thành · '+paused+' tạm ngưng', C.blue, '📁', null) +
     k('Tổng KH vốn đã phân khai', CPM.fmtShort(total),
@@ -347,6 +383,7 @@ function kpiHTML(rows){
     k('Tỷ lệ giải ngân', (ratio*100).toFixed(1)+'%', 'Trên vốn phân khai · còn lại '+CPM.fmtShort(total-paid), ratio>=.6?C.green:ratio>=.3?C.amber:C.red, '📊', ratio) +
     k('Tiến độ thi công TB', avgProgress.toFixed(1)+'%', 'Trọng số theo vốn phân khai', C.cyan, '🏗️', avgProgress/100) +
     k('Trễ báo cáo (>'+CPM.CFG.reportDeadlineDays+' ngày)', overdue, overdue?'Cần nhắc nhở ngay':'Toàn bộ đúng hạn 👍', overdue?C.red:C.green, overdue?'⚠️':'✅', onTime) +
+    esKpi +
   '</div>';
 
   function k(lb,vl,sb,color,ic,pct){
@@ -434,10 +471,11 @@ function tableHTML(rows){
       th('maDA','Mã') + th('tenDA','Tên dự án') + '<th>Phụ trách</th>' +
       th('tongPhanKhai','KH vốn phân khai','num') + th('soGiaiNgan','Đã giải ngân','num') +
       th('tyLeGiaiNgan','Tỷ lệ GN','ctr') + th('tienDo','Tiến độ TC','ctr') +
+      '<th class="ctr">Hồ sơ ĐT (eSign)</th>' +
       '<th>Giai đoạn</th>' + th('trangThai','Trạng thái') + th('daysLate','Cập nhật BC','ctr') +
     '</tr></thead><tbody>' +
     (sorted.length? sorted.map(rowHTML).join('')
-      : '<tr><td colspan="10" class="ctr muted" style="padding:36px">Không có dự án phù hợp bộ lọc</td></tr>') +
+      : '<tr><td colspan="11" class="ctr muted" style="padding:36px">Không có dự án phù hợp bộ lọc</td></tr>') +
     '</tbody></table></div></div>';
 }
 
@@ -451,6 +489,17 @@ function rowHTML(r){
     : late==null ? '<span class="pill p-new">Chưa rõ</span>'
     : late>CPM.CFG.reportDeadlineDays ? '<span class="pill p-bad">Trễ '+late+'n</span>'
     : '<span class="pill p-ok">'+late+'n trước</span>';
+
+  var es = (DATA.esign && DATA.esign.byCanonical) ? DATA.esign.byCanonical[p.maDA] : null;
+  var esCell = '';
+  if (es) {
+    var cp = es.checklist_completion_pct || 0;
+    var ec = cp>=70?'p-ok':cp>=30?'p-run':'p-warn';
+    esCell = '<span class="pill '+ec+'" title="Checklist pháp lý hoàn thành">'+cp+'% ('+(es.signed_docs||0)+'/'+(es.total_docs||0)+' ký)</span>';
+  } else {
+    esCell = '<a href="'+CPM.esc(CPM.CFG.esignApiUrl)+'" target="_blank" rel="noopener" class="tag" style="text-decoration:none" title="Mở trong eSign.Files">🔏 eSign</a>';
+  }
+
   return '<tr class="clickable" data-ma="'+CPM.esc(p.maDA)+'">' +
     '<td><span class="muted" style="font-size:12px">'+CPM.esc(p.maDA)+'</span></td>' +
     '<td style="min-width:250px"><b>'+CPM.esc(p.tenDA)+'</b><br><span class="muted" style="font-size:11.5px">'+CPM.esc(p.loaiDA)+' · '+CPM.esc(p.namThucHien)+'</span></td>' +
@@ -465,6 +514,7 @@ function rowHTML(r){
     '<td class="ctr">'+(prog==null?'<span class="muted">—</span>':
       '<div style="display:flex;align-items:center;gap:7px;justify-content:flex-end"><span style="font-weight:700">'+prog+'%</span>' +
       '<div class="mini"><i style="width:'+prog+'%;background:'+C.cyan+'"></i></div></div>')+'</td>' +
+    '<td class="ctr">'+esCell+'</td>' +
     '<td style="font-size:12.5px">'+CPM.esc(p.giaiDoan||'—')+'</td>' +
     '<td>'+statusPill(p.trangThai)+'</td>' +
     '<td class="ctr">'+upd+'</td></tr>';
@@ -649,6 +699,21 @@ function openProject(maDA){
   var ratio=Math.max(0,Math.min(1,p.tyLeGiaiNgan));
   var prog = st.lastReport? st.lastReport.tienDo : 0;
   var srcRows = Object.keys(p.nguonVon).filter(function(k){return p.nguonVon[k]>0;});
+  var es = (DATA.esign && DATA.esign.byCanonical) ? DATA.esign.byCanonical[p.maDA] : null;
+  var esignDrawerHtml = '<h4 class="blk">🔏 Hồ sơ công trình điện tử & Ký số pháp lý (eSign)</h4>';
+  if (es) {
+    esignDrawerHtml += '<div class="dl">' +
+      dt('Tổng tài liệu lưu trữ', (es.total_docs||0)+' hồ sơ') +
+      dt('Hồ sơ đã ký số hợp lệ', (es.signed_docs||0)+' hồ sơ') +
+      dt('Đang trình ký / chờ ký', (es.pending_sign_docs||0)+' hồ sơ') +
+      dt('Checklist pháp lý 6 bước', (es.checklist_completion_pct||0)+'%') +
+      dt('Sẵn sàng quyết toán', es.settlement_ready ? '✅ Đủ hồ sơ bắt buộc' : '⏳ Chưa đủ mục bắt buộc') +
+    '</div>';
+  } else {
+    esignDrawerHtml += '<div class="banner good" style="background:#f8fafc;border-color:#e2e8f0;color:#334155">' +
+      'Kho hồ sơ công trình điện tử <b>eSign.Files</b> quản lý trọn vòng đời 6 giai đoạn pháp lý, phiên bản tài liệu, xác thực chữ ký PAdES và đóng gói ZIP quyết toán cho dự án <b>#' + CPM.esc(p.maDA) + '</b>. ' +
+      '<a href="' + CPM.esc(CPM.CFG.esignApiUrl) + '" target="_blank" rel="noopener" style="font-weight:700">Mở kho hồ sơ eSign ↗</a></div>';
+  }
 
   var html =
     (p.moTa? '<p style="font-size:13.5px;line-height:1.65;background:#f8fafc;padding:12px 14px;border-radius:10px;margin:0 0 16px">'+CPM.esc(p.moTa)+'</p>':'') +
@@ -667,7 +732,9 @@ function openProject(maDA){
     '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px">' +
       prBox('Giải ngân', ratio, ratio>=.6?C.green:ratio>=.3?C.amber:C.red) +
       prBox('Thi công', prog/100, C.cyan) +
+      (es ? prBox('Checklist Pháp lý', (es.checklist_completion_pct||0)/100, C.teal) : '') +
     '</div>' +
+    esignDrawerHtml +
 
     (srcRows.length? '<h4 class="blk">Cơ cấu KH vốn đã phân khai (cột L–P)</h4><div class="tw" style="max-height:none"><table><tbody>' +
       srcRows.map(function(k){
@@ -962,6 +1029,18 @@ var tmr;
 document.getElementById('fSearch').addEventListener('input', function(){
   clearTimeout(tmr); tmr = setTimeout(render, 220);
 });
+function promptEsignCfg(){
+  var url = prompt('Nhập địa chỉ máy chủ Hồ sơ công trình điện tử (eSign.Files):', CPM.CFG.esignApiUrl || 'https://e-sign-files.vercel.app');
+  if (url === null) return;
+  var key = prompt('Nhập Khóa tích hợp (X-Integration-Key) nếu dùng API tổng hợp (để trống nếu dùng phiên đăng nhập JWT):', CPM.CFG.esignIntegrationKey || '');
+  if (key === null) return;
+  CPM.setEsignConfig(url.trim(), key.trim());
+  CPM.cacheClear('esign_summary');
+  boot(false);
+}
+
+var btnEsignCfgEl = document.getElementById('btnEsignCfg');
+if (btnEsignCfgEl) btnEsignCfgEl.onclick = promptEsignCfg;
 document.getElementById('btnReload').onclick = function(){ CPM.cacheClear(); boot(false); };
 document.getElementById('btnCsv').onclick = exportCSV;
 document.getElementById('drClose').onclick = closeDrawer;

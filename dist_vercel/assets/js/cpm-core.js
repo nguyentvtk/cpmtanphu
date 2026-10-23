@@ -13,12 +13,21 @@
   // 1. CẤU HÌNH
   // ─────────────────────────────────────────────────────────────────────────
   var DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzdxuW6aD150_1xwTFf1ZRZ5v9BvI0I1A3BvsFPMyAT17k9QjChGPD-tidg2LYgb1HU/exec';
+  var DEFAULT_ESIGN_URL = 'https://e-sign-files.vercel.app';
   var SHEET_ID        = '1LsaccoqTu3sRaElEWVdCZjXlzRL_2N2DPPP3UiInDEk';
 
   var CFG = {
     apiUrl: (function () {
       try { return localStorage.getItem('cpm_api_url') || DEFAULT_API_URL; }
       catch (e) { return DEFAULT_API_URL; }
+    })(),
+    esignApiUrl: (function () {
+      try { return localStorage.getItem('esign_api_url') || DEFAULT_ESIGN_URL; }
+      catch (e) { return DEFAULT_ESIGN_URL; }
+    })(),
+    esignIntegrationKey: (function () {
+      try { return localStorage.getItem('esign_integration_key') || ''; }
+      catch (e) { return ''; }
     })(),
     sheetId: SHEET_ID,
     cacheMs: 60000,
@@ -28,6 +37,17 @@
   function setApiUrl(url) {
     CFG.apiUrl = url;
     try { localStorage.setItem('cpm_api_url', url); } catch (e) {}
+  }
+
+  function setEsignConfig(url, integrationKey) {
+    if (url) {
+      CFG.esignApiUrl = url.replace(/\/+$/, '');
+      try { localStorage.setItem('esign_api_url', CFG.esignApiUrl); } catch (e) {}
+    }
+    if (integrationKey !== undefined) {
+      CFG.esignIntegrationKey = integrationKey;
+      try { localStorage.setItem('esign_integration_key', integrationKey); } catch (e) {}
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -444,22 +464,95 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 6. TẢI TOÀN BỘ DỮ LIỆU
+  // 6. TÍCH HỢP CHỈ SỐ HỒ SƠ CÔNG TRÌNH ĐIỆN TỬ (eSign.Files) & TẢI TOÀN BỘ
   // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Lấy chỉ số tổng hợp Hồ sơ công trình điện tử từ eSign.Files
+   * (GET /api/integration/dashboard-summary).
+   * Không bao giờ giả lập số liệu: nếu chưa cấu hình khóa hoặc API không phản hồi,
+   * trả về { available: false } để UI hiển thị trạng thái kết nối trung thực.
+   */
+  function fetchEsignSummary(useCache) {
+    if (useCache !== false) {
+      var cached = cacheGet('esign_summary');
+      if (cached) return Promise.resolve(cached);
+    }
+
+    var baseUrl = (CFG.esignApiUrl || DEFAULT_ESIGN_URL).replace(/\/+$/, '');
+    var headers = { 'Accept': 'application/json' };
+    if (CFG.esignIntegrationKey) {
+      headers['X-Integration-Key'] = CFG.esignIntegrationKey;
+    } else {
+      try {
+        var token = localStorage.getItem('esign_token');
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+      } catch (e) {}
+    }
+
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 8000) : null;
+
+    return fetch(baseUrl + '/api/integration/dashboard-summary', {
+      method: 'GET',
+      headers: headers,
+      signal: ctrl ? ctrl.signal : undefined
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (json) {
+        if (!json || !json.totals) throw new Error('Invalid response');
+        var byCanonical = {};
+        (json.projects || []).forEach(function (ep) {
+          var cid = String(ep.canonical_id || ep.ma_du_an || '').trim();
+          if (cid) byCanonical[cid] = ep;
+        });
+        var summary = {
+          available: true,
+          generatedAt: json.generated_at || null,
+          totals: json.totals,
+          projects: json.projects || [],
+          byCanonical: byCanonical,
+          baseUrl: baseUrl
+        };
+        cacheSet('esign_summary', summary);
+        return summary;
+      })
+      .catch(function (err) {
+        return {
+          available: false,
+          reason: err && err.message ? err.message : 'Chưa kết nối API eSign',
+          totals: null,
+          projects: [],
+          byCanonical: {},
+          baseUrl: baseUrl
+        };
+      })
+      .finally(function () { if (timer) clearTimeout(timer); });
+  }
+
   function loadAll(useCache) {
-    return batchList(['duan', 'nhansu', 'baocao', 'gantt'], useCache).then(function (d) {
+    return Promise.all([
+      batchList(['duan', 'nhansu', 'baocao', 'gantt'], useCache),
+      fetchEsignSummary(useCache)
+    ]).then(function (results) {
+      var d = results[0] || {};
+      var esign = results[1] || { available: false, byCanonical: {} };
       return {
         projects: (d.duan   || []).map(mapProject).filter(function (p) { return p.maDA || p.tenDA; }),
         staff:    (d.nhansu || []).map(mapStaff).filter(function (s) { return s.maNV || s.hoTen; }),
         reports:  (d.baocao || []).map(mapReport).filter(function (r) { return r.maDA || r.id; }),
-        gantt:    (d.gantt  || []).map(mapGantt).filter(function (g) { return g.maDA; })
+        gantt:    (d.gantt  || []).map(mapGantt).filter(function (g) { return g.maDA; }),
+        esign:    esign
       };
     });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   global.CPM = {
-    CFG: CFG, setApiUrl: setApiUrl,
+    CFG: CFG, setApiUrl: setApiUrl, setEsignConfig: setEsignConfig,
     norm: norm, sameName: sameName, pick: pick,
     toNum: toNum, toDate: toDate, fmtDate: fmtDate, toISO: toISO, daysBetween: daysBetween,
     fmtVND: fmtVND, fmtShort: fmtShort, esc: esc,
@@ -467,6 +560,6 @@
     mapProject: mapProject, mapReport: mapReport, mapStaff: mapStaff, mapGantt: mapGantt,
     requiresReport: requiresReport, computeReportStatus: computeReportStatus,
     groupOverdueByStaff: groupOverdueByStaff, projectsOf: projectsOf,
-    loadAll: loadAll
+    fetchEsignSummary: fetchEsignSummary, loadAll: loadAll
   };
 })(typeof window !== 'undefined' ? window : globalThis);
