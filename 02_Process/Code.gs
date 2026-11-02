@@ -694,7 +694,9 @@ class CRUDService {
   }
 
   get(id) {
-    var data = this.list();
+    // Tận dụng cache list (nếu còn hạn) để khỏi đọc + map lại toàn bộ sheet
+    // chỉ để lấy 1 dòng. Cache nguội thì đọc như cũ.
+    var data = cacheGet_(this.sheetName) || this.list();
     var pk = this.sheetName === "Gantt" ? "maCT" : Object.values(this.map)[0];
     for (var i = 0; i < data.length; i++) {
       if (data[i][pk] == id) return data[i];
@@ -911,11 +913,16 @@ class CRUDService {
     var keyColIdx = this.getKeyColIndex_(headers);
     for (var i = 1; i < allData.length; i++) {
       if (String(allData[i][keyColIdx]).trim() === targetIdStr) {
+        // Gộp toàn bộ thay đổi vào 1 mảng rồi ghi bằng setValues (tối đa 2 lần gọi
+        // Sheets API) thay vì setValue từng ô (N lần gọi) => nhanh hơn ~N lần.
+        var rowVals = allData[i].slice();
+        var tiDoColIdx = -1;
         headers.forEach(function(h, j) {
           var cleanH = String(h).trim();
           var key = map[cleanH] || cleanH;
+          if (key === "tiDo") tiDoColIdx = j;
           // KHÔNG ghi đè cột khóa: giá trị không đổi (chính là id dùng để tìm dòng),
-          // và nếu cột khóa sinh bằng ARRAYFORMULA thì setValue sẽ phá công thức,
+          // và nếu cột khóa sinh bằng ARRAYFORMULA thì ghi đè sẽ phá công thức,
           // làm mất mã của toàn bộ các dòng khác (sự cố cột Mã công tác Gantt).
           if (j === keyColIdx) return;
           // Bảo mật: với sheet chứa mật khẩu, nếu client gửi password rỗng
@@ -925,14 +932,22 @@ class CRUDService {
               (data[key] === undefined || String(data[key]).trim() === "")) {
             return;
           }
-          if (data[key] !== undefined) {
-            var cell = sheet.getRange(i + 1, j + 1);
-            cell.setValue(data[key]);
-            if (key === "tiDo") {
-              cell.setNumberFormat('0%');
-            }
-          }
+          if (data[key] !== undefined) rowVals[j] = data[key];
         });
+
+        var rowNum = i + 1;
+        var width = headers.length;
+        // Ghi 2 đoạn liền kề bao quanh cột khóa để không chạm vào ô khóa.
+        if (keyColIdx > 0) {
+          sheet.getRange(rowNum, 1, 1, keyColIdx).setValues([rowVals.slice(0, keyColIdx)]);
+        }
+        if (keyColIdx < width - 1) {
+          sheet.getRange(rowNum, keyColIdx + 2, 1, width - keyColIdx - 1)
+               .setValues([rowVals.slice(keyColIdx + 1)]);
+        }
+        if (tiDoColIdx >= 0 && tiDoColIdx !== keyColIdx) {
+          sheet.getRange(rowNum, tiDoColIdx + 1).setNumberFormat('0%');
+        }
         return { id: id, updated: data };
       }
     }
@@ -1227,6 +1242,15 @@ function uploadProjectFile(maDA, namThucHien, tenDA, fileName, base64Data) {
  */
 function getTenDAByMaDA(maDA) {
   if (!maDA) return "";
+  var cleanMaDA0 = String(maDA).trim().toLowerCase();
+  // Dùng cache list "Dự án" nếu còn hạn => khỏi mở & đọc lại toàn bộ sheet.
+  var cached = cacheGet_("Dự án");
+  if (cached) {
+    for (var c = 0; c < cached.length; c++) {
+      if (String(cached[c].maDA).trim().toLowerCase() === cleanMaDA0) return cached[c].tenDA || "";
+    }
+    return "";
+  }
   try {
     var duAnSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dự án");
     if (!duAnSheet) return "";
@@ -1251,6 +1275,15 @@ function getTenDAByMaDA(maDA) {
  */
 function getMaDAByTenDA(tenDA) {
   if (!tenDA) return "";
+  var cleanTenDA0 = String(tenDA).trim().toLowerCase();
+  // Dùng cache list "Dự án" nếu còn hạn => khỏi mở & đọc lại toàn bộ sheet.
+  var cached = cacheGet_("Dự án");
+  if (cached) {
+    for (var c = 0; c < cached.length; c++) {
+      if (String(cached[c].tenDA).trim().toLowerCase() === cleanTenDA0) return cached[c].maDA || "";
+    }
+    return "";
+  }
   try {
     var duAnSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Dự án");
     if (!duAnSheet) return "";

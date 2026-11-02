@@ -1,8 +1,8 @@
 import os
 import shutil
 
-# Thư mục gốc dự án
-BASE_DIR = r"D:\n3n\CPM5.0"
+# Thư mục gốc dự án = thư mục chứa chính file build này (chạy được trên mọi máy)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.join(BASE_DIR, "03_Outputs")
 DIST_DIR = os.path.join(BASE_DIR, "dist_vercel")
 
